@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DOMScanner Desktop Agent</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #070b14;
+      --card-bg: #0d1220;
+      --border: rgba(255, 255, 255, 0.08);
+      --cyan: #00d4ff;
+      --indigo: #6366f1;
+      --green: #4ade80;
+      --red: #f87171;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .app-container {
+      width: 100%;
+      max-width: 460px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+      overflow: hidden;
+    }
+    .header {
+      padding: 24px 28px;
+      background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(99, 102, 241, 0.15));
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--cyan), var(--indigo));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 0 16px rgba(0, 212, 255, 0.3);
+    }
+    .header-title { font-size: 18px; font-weight: 700; }
+    .header-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    .body { padding: 28px; }
+
+    .status-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+    .status-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .status-label { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; }
+    .status-pill {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-pill.online { background: rgba(74, 222, 128, 0.15); color: var(--green); border: 1px solid rgba(74, 222, 128, 0.3); }
+    .status-pill.offline { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.3); }
+
+    .info-row { display: flex; justify-content: space-between; font-size: 13px; margin-top: 8px; }
+    .info-key { color: var(--text-muted); }
+    .info-val { font-family: 'JetBrains Mono', monospace; color: var(--text); font-weight: 500; }
+
+    .auto-card {
+      background: linear-gradient(135deg, rgba(74, 222, 128, 0.08), rgba(0, 212, 255, 0.08));
+      border: 1px solid rgba(74, 222, 128, 0.25);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .auto-card-title { font-size: 13px; font-weight: 700; color: var(--green); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+    .auto-card-sub { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+    .activity-log {
+      background: #05080f;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      height: 110px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <div class="header">
+      <div class="logo-icon">📡</div>
+      <div>
+        <div class="header-title">DOMScanner Agent</div>
+        <div class="header-subtitle">Desktop LAN Scanner Engine</div>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <!-- Status Card -->
+      <div class="status-card">
+        <div class="status-header">
+          <span class="status-label">Agent Status</span>
+          <div id="status-pill" class="status-pill offline">● Connecting…</div>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Computer Name:</span>
+          <span class="info-val" id="val-hostname">Detecting…</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Local Network IP:</span>
+          <span class="info-val" id="val-localip">Detecting…</span>
+        </div>
+        <div class="info-row">
+          <span class="info-key">Cloud Server:</span>
+          <span class="info-val" id="val-server">—</span>
+        </div>
+      </div>
+
+      <!-- Zero-Touch Auto-Connected Indicator -->
+      <div class="auto-card">
+        <div class="auto-card-title">⚡ Zero-Touch Auto-Connect Enabled</div>
+        <div class="auto-card-sub">This agent connects automatically to your Cloud Web Service. No sign-in, account, or code required!</div>
+      </div>
+
+      <!-- Live Activity Log -->
+      <div class="activity-log" id="activity-log">
+        [System] Agent initialized. Auto-connecting to cloud...
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function log(msg) {
+      const box = document.getElementById('activity-log');
+      const time = new Date().toLocaleTimeString();
+      box.innerHTML += `<div>[${time}] ${msg}</div>`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    async function loadAgentState() {
+      try {
+        const state = await fetch('/api/state').then(r => r.json());
+        document.getElementById('val-hostname').textContent = state.agentName || '—';
+        document.getElementById('val-localip').textContent  = state.localIp  || '—';
+        document.getElementById('val-server').textContent   = state.serverUrl || '—';
+
+        const pill = document.getElementById('status-pill');
+        if (state.status === 'online') {
+          pill.className = 'status-pill online';
+          pill.textContent = '● Connected & Online';
+        } else {
+          pill.className = 'status-pill offline';
+          pill.textContent = '● Connecting…';
+        }
+      } catch {}
+    }
+
+    setInterval(loadAgentState, 3000);
+    loadAgentState();
+  </script>
+
+</body>
+</html>

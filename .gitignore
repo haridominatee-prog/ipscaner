@@ -1,0 +1,5 @@
+node_modules/
+*.db
+*.log
+agent-config.json
+.DS_Store
