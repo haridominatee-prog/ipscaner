@@ -21,6 +21,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
+/** Explicit Root Route */
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // ─── Cloud REST API Routes ─────────────────────────────────────────────────────
 app.use('/api', cloudRoutes);
 
