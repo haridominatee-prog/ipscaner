@@ -97,10 +97,10 @@ const server = http.createServer(app);
 // Attach Real-time Cloud WebSocket hub to HTTP server
 wsServerHub.attachWebSocketServer(server);
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   const net = scannerCore.getLocalNetwork();
   console.log(`\n🚀 DOMScanner Server running at:`);
-  console.log(`   Local Dashboard: http://localhost:${PORT}`);
+  console.log(`   Local Dashboard: http://0.0.0.0:${PORT}`);
   if (net) console.log(`   Network Access:  http://${net.ip}:${PORT}`);
   console.log(`   Cloud WS Hub:    ws://localhost:${PORT}/ws\n`);
 });
