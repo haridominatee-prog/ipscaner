@@ -733,6 +733,25 @@ function handleCloudScanStream(event, d) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+
+/** Keep retrying until guest token is acquired — handles Render cold starts */
+async function initCloudMode() {
+  setStatus('Connecting to cloud server…');
+  let attempt = 0;
+  while (!S.guestToken) {
+    attempt++;
+    await fetchGuestToken();
+    if (S.guestToken) break;
+    setStatus(`Cloud server starting up… (attempt ${attempt})`);
+    await new Promise(r => setTimeout(r, 3000)); // wait 3s before retry
+  }
+  setStatus('Ready — waiting for Desktop Agent…', 'ok');
+  await fetchUserAgents();
+  connectCloudWS();
+  // Refresh agent list every 10s in cloud mode
+  setInterval(fetchUserAgents, 10000);
+}
+
 async function init() {
   setupPWA();
   loadPublicIP();
@@ -740,26 +759,10 @@ async function init() {
 
   const isLocal = await loadNetworkInfo();
   if (!isLocal) {
-    setStatus('Connecting to Cloud Server…');
-    // Fetch guest token first, then connect
-    await fetchGuestToken();
-    if (S.guestToken) {
-      setStatus('Ready — waiting for Desktop Agent…');
-      await fetchUserAgents();
-      connectCloudWS();
-    } else {
-      setStatus('Cloud server warming up, retrying…');
-      setTimeout(async () => {
-        await fetchGuestToken();
-        if (S.guestToken) {
-          await fetchUserAgents();
-          connectCloudWS();
-          setStatus('Ready — waiting for Desktop Agent…');
-        }
-      }, 3000);
-    }
+    initCloudMode(); // runs async, keeps retrying until connected
   }
 }
 
 window.addEventListener('DOMContentLoaded', init);
+
 

@@ -19,45 +19,49 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
+echo Node.js found:
+node --version
+echo.
+
 set "AGENT_DIR=%LOCALAPPDATA%\DOMScannerAgent"
 if not exist "%AGENT_DIR%" mkdir "%AGENT_DIR%"
 
 cd /d "%AGENT_DIR%"
 
-echo  Setting up DOMScanner Agent components...
+:: 1. Create package.json if missing (required for npm install)
+if not exist "package.json" (
+    echo {"name":"domscanner-agent","version":"1.0.0","description":"DOMScanner Desktop Agent"} > package.json
+)
 
-:: 1. Copy dom-agent.js
+:: 2. Install ws module
+echo  Installing ws WebSocket module...
+call npm install ws --no-audit --no-fund --prefer-offline 2>nul
+if %errorlevel% neq 0 (
+    call npm install ws --no-audit --no-fund
+)
+echo  ws module ready.
+echo.
+
+:: 3. Copy dom-agent.js from bat location
 if exist "%~dp0dom-agent.js" (
     copy /y "%~dp0dom-agent.js" "%AGENT_DIR%\dom-agent.js" >nul
+    echo  Agent script updated.
 )
 
-:: 2. Always install ws module (works on all Node versions)
-if not exist "%AGENT_DIR%\node_modules\ws" (
-    echo  Installing ws dependency (required for WebSocket)...
-    call npm install ws --no-audit --no-fund --quiet
-    echo  Done.
-    echo.
-)
-
-:: 3. Write auto-config pointing to Render cloud server
-set "CONFIG_FILE=%AGENT_DIR%\agent-config.json"
-
-:: Only create config if it doesn't already have a valid key
-if not exist "%CONFIG_FILE%" (
-    echo {"serverUrl":"https://ipscaner.onrender.com","agentKey":"","agentName":"%COMPUTERNAME%"} > "%CONFIG_FILE%"
+:: 4. Clear old config so agent auto-pairs fresh each time
+if exist "%AGENT_DIR%\agent-config.json" (
+    del /f /q "%AGENT_DIR%\agent-config.json" >nul
 )
 
 echo.
-echo  DOMScanner Agent is starting...
-echo  It will automatically connect to your cloud dashboard.
+echo  Starting DOMScanner Agent...
+echo  Connecting to: https://ipscaner.onrender.com
 echo  Keep this window open while scanning.
 echo.
 
-:: Launch Agent (auto-pairs and connects to Render)
+:: Launch Agent
 node "%AGENT_DIR%\dom-agent.js" --server=https://ipscaner.onrender.com
 
-if %errorlevel% neq 0 (
-    echo.
-    echo  Agent stopped. Press any key to exit.
-    pause >nul
-)
+echo.
+echo  Agent stopped. Press any key to exit.
+pause >nul
