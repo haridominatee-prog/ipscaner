@@ -11,11 +11,25 @@ const S = {
   filterText:   '',
   myPublicIP:   null,
   scanning:     false,
-  mode:         'cloud',     // Option 2 ONLY
+  mode:         'cloud',
   agents:       [],
   selectedAgentId: null,
   cloudWS:      null,
+  guestToken:   null,        // auto-fetched JWT for no-login cloud mode
 };
+
+/** Fetch the server-generated guest JWT token (no login required) */
+async function fetchGuestToken() {
+  try {
+    const res  = await fetch('/api/guest-token');
+    if (!res.ok) return null;
+    const data = await res.json();
+    S.guestToken = data.token || null;
+    return S.guestToken;
+  } catch {
+    return null;
+  }
+}
 
 // ── Device type icons (emoji) ────────────────────────────────────────────────
 const DEVICE_ICONS = {
@@ -534,9 +548,10 @@ function openAgentDownloadModal() {
 }
 
 async function fetchUserAgents() {
+  if (!S.guestToken) return;
   try {
     const res = await fetch('/api/agents', {
-      headers: { Authorization: `Bearer guest_token` }
+      headers: { Authorization: `Bearer ${S.guestToken}` }
     });
     if (!res.ok) return;
     const data = await res.json();
@@ -589,8 +604,9 @@ function updateAgentBadge(isOnline) {
 }
 
 function connectCloudWS() {
+  if (!S.guestToken) return;
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${location.host}/ws?type=client`;
+  const wsUrl = `${protocol}//${location.host}/ws?type=client&token=${encodeURIComponent(S.guestToken)}`;
 
   if (S.cloudWS) S.cloudWS.close();
 
@@ -724,9 +740,24 @@ async function init() {
 
   const isLocal = await loadNetworkInfo();
   if (!isLocal) {
-    setStatus('Ready (Cloud Agent Mode)');
-    fetchUserAgents();
-    connectCloudWS();
+    setStatus('Connecting to Cloud Server…');
+    // Fetch guest token first, then connect
+    await fetchGuestToken();
+    if (S.guestToken) {
+      setStatus('Ready — waiting for Desktop Agent…');
+      await fetchUserAgents();
+      connectCloudWS();
+    } else {
+      setStatus('Cloud server warming up, retrying…');
+      setTimeout(async () => {
+        await fetchGuestToken();
+        if (S.guestToken) {
+          await fetchUserAgents();
+          connectCloudWS();
+          setStatus('Ready — waiting for Desktop Agent…');
+        }
+      }, 3000);
+    }
   }
 }
 

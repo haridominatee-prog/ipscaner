@@ -13,6 +13,7 @@ const cors     = require('cors');
 const scannerCore  = require('./lib/scanner-engine');
 const cloudRoutes  = require('./lib/cloud-routes');
 const wsServerHub  = require('./lib/ws-server');
+const guestSession = require('./lib/guest-session');
 
 const app  = express();
 const PORT = process.env.PORT || 7890;
@@ -24,6 +25,14 @@ app.use(express.static(path.join(__dirname)));
 /** Explicit Root Route */
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// ─── Guest Session Token Endpoint ─────────────────────────────────────────────
+/** GET /api/guest-token — returns shared guest JWT for no-login operation */
+app.get('/api/guest-token', (req, res) => {
+  const token = guestSession.getGuestToken();
+  if (!token) return res.status(503).json({ error: 'Guest session not ready yet, retry in 2s' });
+  res.json({ token });
 });
 
 // ─── Cloud REST API Routes ─────────────────────────────────────────────────────
@@ -97,10 +106,13 @@ const server = http.createServer(app);
 // Attach Real-time Cloud WebSocket hub to HTTP server
 wsServerHub.attachWebSocketServer(server);
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', async () => {
   const net = scannerCore.getLocalNetwork();
   console.log(`\n🚀 DOMScanner Server running at:`);
   console.log(`   Local Dashboard: http://0.0.0.0:${PORT}`);
   if (net) console.log(`   Network Access:  http://${net.ip}:${PORT}`);
   console.log(`   Cloud WS Hub:    ws://localhost:${PORT}/ws\n`);
+
+  // Initialise guest session after server is up
+  await guestSession.initGuestSession();
 });

@@ -487,6 +487,30 @@ function parseArgs() {
 
 let config = parseArgs();
 
+async function autoPair() {
+  const httpUrl = config.serverUrl
+    .replace(/^wss:\/\//, 'https://')
+    .replace(/^ws:\/\//, 'http://')
+    .replace(/\/ws$/, '');
+
+  console.log(`\n🔗 Auto-pairing with DOMScanner Cloud Server at ${httpUrl}...`);
+  console.log(`   Agent Name: ${config.agentName}\n`);
+
+  try {
+    const res = await postJson(`${httpUrl}/api/agent/auto-pair`, {
+      name: config.agentName,
+    });
+    config.agentKey = res.agentKey;
+    config.serverUrl = httpUrl;
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log(`✅ Auto-paired successfully! Agent is ready to scan.`);
+  } catch (err) {
+    console.error(`❌ Auto-pairing failed: ${err.message}`);
+    console.log(`\n💡 Try running manually: node dom-agent.js --server=<YOUR_RENDER_URL>\n`);
+    process.exit(1);
+  }
+}
+
 async function interactiveSetup() {
   console.log(`
 ======================================================
@@ -498,15 +522,21 @@ async function interactiveSetup() {
   if (targetServer) config.serverUrl = targetServer;
 
   console.log(`\nHow would you like to pair this computer?`);
-  console.log(`  [1] Enter 6-Digit Pairing Code from Web Dashboard (Recommended)`);
-  console.log(`  [2] Sign in with DOMScanner Account Email & Password`);
-  console.log(`  [3] Paste Agent Key manually\n`);
+  console.log(`  [1] Auto-Pair instantly (No login required) ← Recommended`);
+  console.log(`  [2] Enter 6-Digit Pairing Code from Web Dashboard`);
+  console.log(`  [3] Sign in with DOMScanner Account Email & Password`);
+  console.log(`  [4] Paste Agent Key manually\n`);
 
-  const choice = await prompt(`Select Option (1/2/3): `);
+  const choice = await prompt(`Select Option (1/2/3/4): `);
 
-  const httpUrl = config.serverUrl.replace(/^ws/, 'http');
+  const httpUrl = config.serverUrl
+    .replace(/^wss:\/\//, 'https://')
+    .replace(/^ws:\/\//, 'http://')
+    .replace(/\/ws$/, '');
 
-  if (choice === '1') {
+  if (choice === '1' || choice === '') {
+    await autoPair();
+  } else if (choice === '2') {
     const pairingCode = await prompt(`Enter 6-Digit Pairing Code (e.g. 849204): `);
     console.log('\n⏳ Pairing agent with cloud server...');
     try {
@@ -520,7 +550,7 @@ async function interactiveSetup() {
       console.error(`❌ Pairing Failed: ${err.message}`);
       process.exit(1);
     }
-  } else if (choice === '2') {
+  } else if (choice === '3') {
     const email = await prompt(`Email Address: `);
     const password = await prompt(`Password: `);
     console.log('\n⏳ Signing in and pairing agent...');
@@ -536,7 +566,7 @@ async function interactiveSetup() {
       console.error(`❌ Sign-in Failed: ${err.message}`);
       process.exit(1);
     }
-  } else if (choice === '3') {
+  } else if (choice === '4') {
     config.agentKey = await prompt(`Paste Agent Key: `);
   } else {
     console.error('Invalid choice');
@@ -554,8 +584,15 @@ let isScanning = false;
 
 async function startAgent() {
   if (!config.agentKey) {
-    await interactiveSetup();
+    // If server is Render (not localhost), auto-pair silently
+    const isRender = config.serverUrl.includes('.onrender.com') || process.argv.includes('--auto');
+    if (isRender) {
+      await autoPair();
+    } else {
+      await interactiveSetup();
+    }
   }
+
 
   let wsUrl = config.serverUrl;
   if (wsUrl.startsWith('http://'))  wsUrl = wsUrl.replace('http://', 'ws://');
