@@ -399,8 +399,7 @@ function closeModal() {
   const overlay = document.getElementById('modal-overlay');
   if (overlay) overlay.style.display = 'none';
 
-  const modal = document.getElementById('portscan-modal');
-  if (modal) modal.style.display = 'none';
+  document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
 }
 
 window.addEventListener('keydown', (e) => {
