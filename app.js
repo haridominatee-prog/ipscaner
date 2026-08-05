@@ -644,21 +644,11 @@ let deferredPrompt;
 function setupPWA() {
   const installBtn = document.getElementById('pwa-install-btn');
 
-    window.addEventListener('beforeinstallprompt', (e) => {
+  window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
     if (installBtn) installBtn.style.display = 'inline-flex';
   });
-}
-
-function triggerPWAInstall() {
-  if (deferredPrompt) {
-    deferredPrompt.prompt();
-    deferredPrompt.userChoice.then(() => { deferredPrompt = null; });
-  } else {
-    alert('📲 To install DOM IP Scanner as an App on Android:\n\n1. Tap the Chrome menu (3 dots at top right)\n2. Tap "Add to Home screen" (or "Install app")\n\nIt will install directly onto your phone home screen!');
-  }
-}
 
   if (installBtn) {
     installBtn.addEventListener('click', async () => {
@@ -677,6 +667,15 @@ function triggerPWAInstall() {
     deferredPrompt = null;
     console.log('DOM IP Scanner app installed successfully!');
   });
+}
+
+function triggerPWAInstall() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(() => { deferredPrompt = null; });
+  } else {
+    alert('📲 To install DOM IP Scanner as an App on Android:\n\n1. Tap the Chrome menu (3 dots at top right)\n2. Tap "Add to Home screen" (or "Install app")\n\nIt will install directly onto your phone home screen!');
+  }
 }
 
 // ── ☁️ CLOUD REMOTE MODE EXTENSIONS ──────────────────────────────────────────
