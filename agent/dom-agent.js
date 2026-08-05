@@ -607,7 +607,7 @@ async function startAgent() {
   const localIp  = localNet ? localNet.ip : 'unknown';
   const osInfo   = `${os.type()} ${os.release()} (${os.arch()})`;
 
-  const wsTarget = `${wsUrl}?type=agent&key=${encodeURIComponent(config.agentKey)}&osInfo=${encodeURIComponent(osInfo)}&localIp=${encodeURIComponent(localIp)}&version=${encodeURIComponent(AGENT_VERSION)}`;
+  const wsTarget = `${wsUrl}?type=agent&key=${encodeURIComponent(config.agentKey)}&agentName=${encodeURIComponent(config.agentName)}&osInfo=${encodeURIComponent(osInfo)}&localIp=${encodeURIComponent(localIp)}&version=${encodeURIComponent(AGENT_VERSION)}`;
 
   console.log(`\n📡 Connecting DOMScanner Agent to Cloud at ${wsUrl}...`);
   console.log(`   Agent Name: ${config.agentName}`);
