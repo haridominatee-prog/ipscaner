@@ -56,10 +56,8 @@ if not exist "%AGENT_DIR%\dom-agent.js" (
     exit /b 1
 )
 
-:: 4. Clear old config so agent auto-pairs fresh
-if exist "%AGENT_DIR%\agent-config.json" (
-    del /f /q "%AGENT_DIR%\agent-config.json" >nul
-)
+:: 4. Preserve existing agent config if available
+rem Agent configuration will auto-pair on first run and reuse paired key on subsequent runs.
 
 echo.
 echo  Starting DOMScanner Agent...

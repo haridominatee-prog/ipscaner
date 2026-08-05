@@ -303,14 +303,17 @@
   </main>
 
   <!-- Port Scan Modal (from device card) -->
-  <div class="modal-overlay" id="modal-overlay" onclick="closeModal(); document.querySelectorAll('.modal').forEach(m => m.style.display = 'none'); this.style.display = 'none';" style="display:none;"></div>
+  <div class="modal-overlay" id="modal-overlay"
+    onclick="closeModal(); document.querySelectorAll('.modal').forEach(m => m.style.display = 'none'); this.style.display = 'none';"
+    style="display:none;"></div>
   <div class="modal" id="portscan-modal" style="display:none;">
     <div class="modal-header">
       <div>
         <div class="modal-title" id="modal-title">Port Scan</div>
         <div class="modal-subtitle mono" id="modal-subtitle"></div>
       </div>
-      <button class="modal-close" onclick="closeModal(); this.closest('.modal').style.display='none'; document.getElementById('modal-overlay').style.display='none';">✕</button>
+      <button class="modal-close"
+        onclick="closeModal(); this.closest('.modal').style.display='none'; document.getElementById('modal-overlay').style.display='none';">✕</button>
     </div>
     <div class="modal-body" id="modal-body">
       <div style="text-align:center;padding:40px;">
@@ -327,7 +330,8 @@
         <div class="modal-title">DOMScanner Desktop Agent</div>
         <div class="modal-subtitle">Download &amp; run on any remote computer to scan its local Wi-Fi/LAN network</div>
       </div>
-      <button class="modal-close" onclick="closeModal(); document.getElementById('agent-download-modal').style.display='none'; document.getElementById('modal-overlay').style.display='none';">✕</button>
+      <button class="modal-close"
+        onclick="closeModal(); document.getElementById('agent-download-modal').style.display='none'; document.getElementById('modal-overlay').style.display='none';">✕</button>
     </div>
     <div class="modal-body">
 

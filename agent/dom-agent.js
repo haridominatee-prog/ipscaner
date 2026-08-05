@@ -614,42 +614,73 @@ async function startAgent() {
   console.log(`   OS Info:    ${osInfo}`);
 
   try {
+    if (ws) {
+      try { ws.close(); } catch {}
+      ws = null;
+    }
+
     ws = new WebSocket(wsTarget);
 
-    ws.on('open', () => {
-      console.log('✅ Connected to DOMScanner Cloud Hub successfully!');
-      console.log('🟢 Status: ONLINE & Ready for remote LAN scans.\n');
-      startHeartbeat(osInfo, localIp);
-    });
+    if (typeof ws.on === 'function') {
+      ws.on('open', () => {
+        console.log('✅ Connected to DOMScanner Cloud Hub successfully!');
+        console.log('🟢 Status: ONLINE & Ready for remote LAN scans.\n');
+        startHeartbeat(osInfo, localIp);
+      });
 
-    ws.on('message', (data) => {
-      try {
-        const msg = JSON.parse(data.toString());
-        handleCloudCommand(msg);
-      } catch (err) {
-        console.error('⚠️ Received invalid JSON message:', err.message);
-      }
-    });
+      ws.on('ping', () => {
+        try { if (typeof ws.pong === 'function') ws.pong(); } catch {}
+      });
 
-    ws.on('close', (code, reason) => {
-      console.log(`⚠️ Disconnected from Cloud Hub (Code: ${code}, Reason: ${reason || 'None'}). Reconnecting in 5s...`);
-      stopHeartbeat();
-      scheduleReconnect();
-    });
+      ws.on('message', (data) => {
+        try {
+          const msg = JSON.parse(data.toString());
+          handleCloudCommand(msg);
+        } catch (err) {
+          console.error('⚠️ Received invalid JSON message:', err.message);
+        }
+      });
 
-    ws.on('error', (err) => {
-      console.error('❌ WebSocket Connection Error:', err.message);
-    });
+      ws.on('close', (code, reason) => {
+        console.log(`⚠️ Disconnected from Cloud Hub (Code: ${code}, Reason: ${reason || 'None'}). Reconnecting in 3s...`);
+        stopHeartbeat();
+        scheduleReconnect();
+      });
+
+      ws.on('error', (err) => {
+        console.error('❌ WebSocket Connection Error:', err.message);
+      });
+    } else {
+      // Standard W3C WebSocket fallback
+      ws.onopen = () => {
+        console.log('✅ Connected to DOMScanner Cloud Hub successfully!');
+        console.log('🟢 Status: ONLINE & Ready for remote LAN scans.\n');
+        startHeartbeat(osInfo, localIp);
+      };
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          handleCloudCommand(msg);
+        } catch {}
+      };
+      ws.onclose = (e) => {
+        console.log(`⚠️ Disconnected from Cloud Hub. Reconnecting in 3s...`);
+        stopHeartbeat();
+        scheduleReconnect();
+      };
+      ws.onerror = (err) => {
+        console.error('❌ WebSocket Connection Error:', err.message || err);
+      };
+    }
   } catch (err) {
     console.error('❌ Setup Error:', err.message);
     scheduleReconnect();
   }
 }
 
-function startHeartbeat(osInfo, localIp) {
-  stopHeartbeat();
-  heartbeatTimer = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
+function sendHeartbeat(osInfo, localIp) {
+  if (ws && (ws.readyState === 1 || ws.readyState === WebSocket.OPEN)) {
+    try {
       ws.send(JSON.stringify({
         type: 'heartbeat',
         osInfo,
@@ -657,8 +688,18 @@ function startHeartbeat(osInfo, localIp) {
         version: AGENT_VERSION,
         isScanning,
       }));
-    }
-  }, 15000);
+    } catch {}
+  }
+}
+
+function startHeartbeat(osInfo, localIp) {
+  stopHeartbeat();
+  // Send immediate heartbeat
+  sendHeartbeat(osInfo, localIp);
+  // Repeat every 10 seconds to keep Render connection alive
+  heartbeatTimer = setInterval(() => {
+    sendHeartbeat(osInfo, localIp);
+  }, 10000);
 }
 
 function stopHeartbeat() {
@@ -667,7 +708,7 @@ function stopHeartbeat() {
 
 function scheduleReconnect() {
   if (reconnectTimer) clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(() => startAgent(), 5000);
+  reconnectTimer = setTimeout(() => startAgent(), 3000);
 }
 
 async function handleCloudCommand(msg) {
