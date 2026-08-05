@@ -621,8 +621,8 @@ function updateAgentNetworkHeader(agent) {
     document.getElementById('bar-subnet').textContent  = '—';
   }
 
-  document.getElementById('bar-ssid').textContent    = `${agent.agent_name} (Agent)`;
-  document.getElementById('bar-signal').textContent  = '100%';
+  document.getElementById('bar-ssid').textContent    = agent.ssid || 'Wi-Fi / LAN';
+  document.getElementById('bar-signal').textContent  = agent.signal || '100%';
 }
 
 function updateAgentBadge(isOnline) {

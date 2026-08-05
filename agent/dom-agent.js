@@ -606,12 +606,16 @@ async function startAgent() {
   const localNet = getLocalNetwork();
   const localIp  = localNet ? localNet.ip : 'unknown';
   const osInfo   = `${os.type()} ${os.release()} (${os.arch()})`;
+  const wifi     = await getWifiInfo();
+  const ssid     = wifi.ssid || 'Wi-Fi / LAN';
+  const signal   = wifi.signal || '100%';
 
-  const wsTarget = `${wsUrl}?type=agent&key=${encodeURIComponent(config.agentKey)}&agentName=${encodeURIComponent(config.agentName)}&osInfo=${encodeURIComponent(osInfo)}&localIp=${encodeURIComponent(localIp)}&version=${encodeURIComponent(AGENT_VERSION)}`;
+  const wsTarget = `${wsUrl}?type=agent&key=${encodeURIComponent(config.agentKey)}&agentName=${encodeURIComponent(config.agentName)}&osInfo=${encodeURIComponent(osInfo)}&localIp=${encodeURIComponent(localIp)}&ssid=${encodeURIComponent(ssid)}&signal=${encodeURIComponent(signal)}&version=${encodeURIComponent(AGENT_VERSION)}`;
 
   console.log(`\n📡 Connecting DOMScanner Agent to Cloud at ${wsUrl}...`);
   console.log(`   Agent Name: ${config.agentName}`);
   console.log(`   Local IP:   ${localIp}`);
+  console.log(`   Wi-Fi SSID: ${ssid}`);
   console.log(`   OS Info:    ${osInfo}`);
 
   try {
@@ -626,7 +630,7 @@ async function startAgent() {
       ws.on('open', () => {
         console.log('✅ Connected to DOMScanner Cloud Hub successfully!');
         console.log('🟢 Status: ONLINE & Ready for remote LAN scans.\n');
-        startHeartbeat(osInfo, localIp);
+        startHeartbeat(osInfo, localIp, ssid, signal);
       });
 
       ws.on('ping', () => {
@@ -665,7 +669,7 @@ async function startAgent() {
       ws.onopen = () => {
         console.log('✅ Connected to DOMScanner Cloud Hub successfully!');
         console.log('🟢 Status: ONLINE & Ready for remote LAN scans.\n');
-        startHeartbeat(osInfo, localIp);
+        startHeartbeat(osInfo, localIp, ssid, signal);
       };
       ws.onmessage = (e) => {
         try {
@@ -695,13 +699,15 @@ async function startAgent() {
   }
 }
 
-function sendHeartbeat(osInfo, localIp) {
+function sendHeartbeat(osInfo, localIp, ssid, signal) {
   if (ws && (ws.readyState === 1 || ws.readyState === WebSocket.OPEN)) {
     try {
       ws.send(JSON.stringify({
         type: 'heartbeat',
         osInfo,
         localIp,
+        ssid,
+        signal,
         version: AGENT_VERSION,
         isScanning,
       }));
@@ -709,13 +715,13 @@ function sendHeartbeat(osInfo, localIp) {
   }
 }
 
-function startHeartbeat(osInfo, localIp) {
+function startHeartbeat(osInfo, localIp, ssid, signal) {
   stopHeartbeat();
   // Send immediate heartbeat
-  sendHeartbeat(osInfo, localIp);
+  sendHeartbeat(osInfo, localIp, ssid, signal);
   // Repeat every 10 seconds to keep Render connection alive
   heartbeatTimer = setInterval(() => {
-    sendHeartbeat(osInfo, localIp);
+    sendHeartbeat(osInfo, localIp, ssid, signal);
   }, 10000);
 }
 
