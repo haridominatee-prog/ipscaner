@@ -42,8 +42,15 @@ app.use('/api', cloudRoutes);
 
 /** API: Local Network Info */
 app.get('/api/network', async (req, res) => {
+  // On Render cloud server, local scanning is not possible.
+  // Force cloud mode — user must connect Desktop Agent from their home machine.
+  if (process.env.RENDER || process.env.NODE_ENV === 'production') {
+    return res.status(503).json({ error: 'Cloud server — use Desktop Agent to scan your local network' });
+  }
+
   const info = scannerCore.getLocalNetwork();
   if (!info) return res.status(500).json({ error: 'No network interface found' });
+
 
   const parts   = info.ip.split('.');
   const gateway = `${parts[0]}.${parts[1]}.${parts[2]}.1`;
@@ -66,6 +73,16 @@ app.get('/api/network', async (req, res) => {
 
 /** API: Network Scan (SSE for real-time local scanning) */
 app.get('/api/scan', async (req, res) => {
+  // Block local scanning on Render — must use Desktop Agent
+  if (process.env.RENDER || process.env.NODE_ENV === 'production') {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    res.write(`event: error\ndata: ${JSON.stringify({ message: 'Cloud server — download Desktop Agent to scan your local Wi-Fi/LAN network' })}\n\n`);
+    return res.end();
+  }
+
   res.setHeader('Content-Type',  'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection',    'keep-alive');
