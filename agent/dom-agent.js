@@ -209,11 +209,12 @@ async function getMACVendor(mac) {
   if (OUI_TABLE[prefix]) return OUI_TABLE[prefix];
   if (isLocallyAdminMAC(mac)) return 'Local/SBC (no OUI)';
 
+  // Fast API lookup (600ms max timeout so scan loop never stalls)
   try {
     const result = await new Promise((resolve) => {
       const req = https.get(
         `https://api.macvendors.com/${encodeURIComponent(mac)}`,
-        { timeout: 3000 },
+        { timeout: 600 },
         (res) => {
           let data = '';
           res.on('data', (d) => (data += d));
@@ -641,9 +642,18 @@ async function startAgent() {
         }
       });
 
-      ws.on('close', (code, reason) => {
-        console.log(`⚠️ Disconnected from Cloud Hub (Code: ${code}, Reason: ${reason || 'None'}). Reconnecting in 3s...`);
+      ws.on('close', async (code, reason) => {
+        const rStr = (reason || '').toString();
         stopHeartbeat();
+
+        if (code === 4001 || rStr.includes('Invalid Agent Key')) {
+          console.log(`⚠️ Agent key rejected by server (Code 4001). Re-pairing automatically...`);
+          config.agentKey = '';
+          try { if (fs.existsSync(configPath)) fs.unlinkSync(configPath); } catch {}
+          await autoPair();
+        } else {
+          console.log(`⚠️ Disconnected from Cloud Hub (Code: ${code}, Reason: ${rStr || 'None'}). Reconnecting in 3s...`);
+        }
         scheduleReconnect();
       });
 
@@ -663,9 +673,16 @@ async function startAgent() {
           handleCloudCommand(msg);
         } catch {}
       };
-      ws.onclose = (e) => {
-        console.log(`⚠️ Disconnected from Cloud Hub. Reconnecting in 3s...`);
+      ws.onclose = async (e) => {
         stopHeartbeat();
+        if (e && (e.code === 4001 || (e.reason && e.reason.includes('Invalid')))) {
+          console.log(`⚠️ Agent key rejected by server. Re-pairing automatically...`);
+          config.agentKey = '';
+          try { if (fs.existsSync(configPath)) fs.unlinkSync(configPath); } catch {}
+          await autoPair();
+        } else {
+          console.log(`⚠️ Disconnected from Cloud Hub. Reconnecting in 3s...`);
+        }
         scheduleReconnect();
       };
       ws.onerror = (err) => {
