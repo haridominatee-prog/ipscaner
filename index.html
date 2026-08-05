@@ -267,9 +267,12 @@
 
         <div class="filter-bar ps-filter-bar">
           <div class="filter-pills">
-            <button class="pill active" data-filter="all" onclick="filterPortScanResults('all')">All Ports (<span id="ps-cnt-all">0</span>)</button>
-            <button class="pill" data-filter="open" onclick="filterPortScanResults('open')">🟢 Open Ports (<span id="ps-cnt-open">0</span>)</button>
-            <button class="pill" data-filter="closed" onclick="filterPortScanResults('closed')">🔴 Closed (<span id="ps-cnt-closed">0</span>)</button>
+            <button class="pill active" data-filter="all" onclick="filterPortScanResults('all')">All Ports (<span
+                id="ps-cnt-all">0</span>)</button>
+            <button class="pill" data-filter="open" onclick="filterPortScanResults('open')">🟢 Open Ports (<span
+                id="ps-cnt-open">0</span>)</button>
+            <button class="pill" data-filter="closed" onclick="filterPortScanResults('closed')">🔴 Closed (<span
+                id="ps-cnt-closed">0</span>)</button>
           </div>
         </div>
 
@@ -341,13 +344,18 @@
     <div class="modal-body">
 
       <!-- Method 1: PowerShell Direct Command -->
-      <div class="dl-cmd-box card" style="background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:24px;">
-        <div style="font-weight:700;color:var(--green);font-size:14px;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+      <div class="dl-cmd-box card"
+        style="background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:24px;">
+        <div
+          style="font-weight:700;color:var(--green);font-size:14px;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
           <span>🚀 Method 1: Instant 1-Click Launch (Recommended — Zero Warnings)</span>
         </div>
-        <p style="font-size:12px;color:var(--text-2);margin-bottom:12px;">Copy &amp; paste this command directly into PowerShell / Terminal on your Windows PC (No Admin Required):</p>
+        <p style="font-size:12px;color:var(--text-2);margin-bottom:12px;">Copy &amp; paste this command directly into
+          PowerShell / Terminal on your Windows PC (No Admin Required):</p>
         <div style="display:flex;gap:10px;align-items:center;">
-          <input type="text" id="ps-cmd-text" class="mono input-text" readonly value="powershell -ExecutionPolicy Bypass -Command &quot;iwr -useb https://ipscaner.onrender.com/api/downloads/agent/ps1 | iex&quot;" style="font-size:12px;flex:1;background:rgba(255,255,255,0.06);" />
+          <input type="text" id="ps-cmd-text" class="mono input-text" readonly
+            value="powershell -ExecutionPolicy Bypass -Command &quot;iwr -useb https://ipscaner.onrender.com/api/downloads/agent/ps1 | iex&quot;"
+            style="font-size:12px;flex:1;background:rgba(255,255,255,0.06);" />
           <button class="btn btn-primary btn-sm" onclick="copyAgentPsCmd(this)">📋 Copy Command</button>
         </div>
       </div>
@@ -356,6 +364,13 @@
         <h4 class="section-title">Method 2: Direct Script Downloads</h4>
         <p class="section-sub">Download launcher script for your target machine:</p>
         <div class="download-buttons-grid">
+          <a href="/api/downloads/agent/apk" download class="dl-btn android" style="border-color:rgba(34,197,94,0.3);">
+            <span class="dl-icon">🤖</span>
+            <div class="dl-info">
+              <span class="dl-title">Android Mobile App</span>
+              <span class="dl-sub">DOMScanner.apk (Standalone App)</span>
+            </div>
+          </a>
           <a href="/api/downloads/agent/win" download class="dl-btn windows">
             <span class="dl-icon">🪟</span>
             <div class="dl-info">

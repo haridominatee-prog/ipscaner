@@ -1,0 +1,15 @@
+{
+  "appId": "com.domscanner.app",
+  "appName": "DOM IP Scanner",
+  "webDir": "ip-dashboard",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#0d1220"
+    }
+  }
+}
