@@ -14,24 +14,27 @@ const { exec } = require('child_process');
 const dns      = require('dns').promises;
 const net      = require('net');
 
-// ── WebSocket Resolution (Native in Node 21+, fallback to ws module) ──────────
+// ── WebSocket Resolution (try local ws module first, then native Node 22+) ────
 let WebSocket;
-if (typeof globalThis.WebSocket !== 'undefined') {
-  WebSocket = globalThis.WebSocket;
-} else {
+try {
+  // Prefer the locally installed ws module (always reliable)
+  const localWs = path.join(process.env.LOCALAPPDATA || '', 'DOMScannerAgent', 'node_modules', 'ws');
+  WebSocket = require(localWs);
+} catch {
   try {
     WebSocket = require('ws');
-  } catch (err) {
-    try {
-      // Try resolving ws from local appdata or global
-      const localWs = path.join(process.env.LOCALAPPDATA || '', 'DOMScannerAgent', 'node_modules', 'ws');
-      WebSocket = require(localWs);
-    } catch {
-      console.error('❌ WebSocket support missing. Please run: npm install ws');
+  } catch {
+    // Fallback: use native WebSocket (Node 22+)
+    if (typeof globalThis.WebSocket !== 'undefined') {
+      WebSocket = globalThis.WebSocket;
+    } else {
+      console.error('❌ WebSocket support missing.');
+      console.error('   Please run: cd %LOCALAPPDATA%\\DOMScannerAgent && npm install ws');
       process.exit(1);
     }
   }
 }
+
 
 const AGENT_VERSION = '1.0.0';
 const configPath    = path.join(__dirname, 'agent-config.json');
