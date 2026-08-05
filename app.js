@@ -594,6 +594,35 @@ function onAgentSelectChange() {
   S.selectedAgentId = parseInt(select.value);
   const selected = S.agents.find(a => a.id === S.selectedAgentId);
   updateAgentBadge(selected ? selected.status === 'online' : false);
+  updateAgentNetworkHeader(selected);
+}
+
+function updateAgentNetworkHeader(agent) {
+  if (!agent || agent.status !== 'online') {
+    document.getElementById('bar-myip').textContent    = 'Cloud Remote';
+    document.getElementById('bar-gateway').textContent = '—';
+    document.getElementById('bar-subnet').textContent  = '—';
+    document.getElementById('bar-ssid').textContent    = 'Remote Agents';
+    document.getElementById('bar-signal').textContent  = '—';
+    return;
+  }
+
+  const ip = agent.local_ip || '';
+  if (ip && ip !== 'unknown' && ip.includes('.')) {
+    const parts = ip.split('.');
+    const gateway = `${parts[0]}.${parts[1]}.${parts[2]}.1`;
+    const subnet = `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
+    document.getElementById('bar-myip').textContent    = ip;
+    document.getElementById('bar-gateway').textContent = gateway;
+    document.getElementById('bar-subnet').textContent  = subnet;
+  } else {
+    document.getElementById('bar-myip').textContent    = agent.local_ip || 'Online';
+    document.getElementById('bar-gateway').textContent = '—';
+    document.getElementById('bar-subnet').textContent  = '—';
+  }
+
+  document.getElementById('bar-ssid').textContent    = `${agent.agent_name} (Agent)`;
+  document.getElementById('bar-signal').textContent  = '100%';
 }
 
 function updateAgentBadge(isOnline) {
