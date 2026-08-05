@@ -355,23 +355,57 @@ function updateQuickFill() {
   const container = document.getElementById('ps-quick-fill');
   if (!container) return;
 
-  if (!S.devices || S.devices.length === 0) {
-    container.innerHTML = '<span class="ps-quick-empty">Run Network Scan to auto-populate target IPs</span>';
+  const ipList = [];
+
+  // Get selected agent IP
+  let agentIp = null;
+  if (S.selectedAgentId) {
+    const agent = S.agents.find(a => a.id === S.selectedAgentId);
+    if (agent && agent.local_ip && agent.local_ip !== 'unknown') {
+      agentIp = agent.local_ip;
+    }
+  }
+
+  // 1. Gateway IP (e.g. 192.168.0.1)
+  if (agentIp && agentIp.includes('.')) {
+    const parts = agentIp.split('.');
+    const gatewayIp = `${parts[0]}.${parts[1]}.${parts[2]}.1`;
+    ipList.push({ ip: gatewayIp, label: 'Gateway / Router', icon: '🌐' });
+  }
+
+  // 2. Desktop Agent IP
+  if (agentIp) {
+    ipList.push({ ip: agentIp, label: 'Desktop Agent PC', icon: '💻' });
+  }
+
+  // 3. Discovered Devices from Network Scan
+  if (S.devices && S.devices.length > 0) {
+    for (const d of S.devices) {
+      if (!ipList.some(item => item.ip === d.ip)) {
+        const icon = d.deviceType?.icon ? getIconEmoji(d.deviceType.icon) : (d.isGateway ? '🌐' : '💻');
+        const label = d.hostname || d.vendor || (d.isGateway ? 'Gateway' : 'Device');
+        ipList.push({ ip: d.ip, label, icon });
+      }
+    }
+  }
+
+  if (ipList.length === 0) {
+    container.innerHTML = '<span class="ps-quick-empty">Waiting for Desktop Agent network info…</span>';
     return;
   }
 
-  const chipsHtml = S.devices.slice(0, 15).map(d => `
-    <button class="ps-quick-chip" onclick="setPortScanTarget('${d.ip}', this)">
-      <span>${d.deviceType?.icon ? getIconEmoji(d.deviceType.icon) : '💻'}</span>
-      <span>${d.ip}</span>
+  const chipsHtml = ipList.slice(0, 16).map(item => `
+    <button class="ps-quick-chip" onclick="setPortScanTarget('${item.ip}', this)" title="${item.label}">
+      <span>${item.icon}</span>
+      <span>${item.ip}</span>
     </button>
   `).join('');
 
   container.innerHTML = chipsHtml;
 
   const targetInput = document.getElementById('ps-target');
-  if (targetInput && !targetInput.value && S.devices.length > 0) {
-    targetInput.value = S.devices[0].ip;
+  if (targetInput && !targetInput.value && ipList.length > 0) {
+    targetInput.value = ipList[0].ip;
   }
 }
 
@@ -696,6 +730,7 @@ function onAgentSelectChange() {
   const selected = S.agents.find(a => a.id === S.selectedAgentId);
   updateAgentBadge(selected ? selected.status === 'online' : false);
   updateAgentNetworkHeader(selected);
+  updateQuickFill();
 }
 
 function updateAgentNetworkHeader(agent) {
