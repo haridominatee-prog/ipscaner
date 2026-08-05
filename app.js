@@ -627,6 +627,17 @@ function copyPublicIP() {
   });
 }
 
+function copyAgentPsCmd(btnEl) {
+  const input = document.getElementById('ps-cmd-text');
+  if (!input) return;
+  input.select();
+  navigator.clipboard.writeText(input.value).then(() => {
+    const origText = btnEl.textContent;
+    btnEl.textContent = '✅ Copied!';
+    setTimeout(() => { btnEl.textContent = origText; }, 2500);
+  });
+}
+
 // ── PWA SUPPORT ───────────────────────────────────────────────────────────────
 let deferredPrompt;
 
