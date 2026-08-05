@@ -342,84 +342,185 @@ function updateFilterCounts() {
 }
 
 // ── PORT SCANNER ─────────────────────────────────────────────────────────────
-function updateQuickFill() {
-  const wrap = document.getElementById('ps-quick-fill');
-  if (!wrap) return;
+// ── PORT SCANNER LOGIC ────────────────────────────────────────────────────────
+let portScanResultsCache = null;
+let currentPortFilter = 'all';
 
-  if (S.devices.length === 0) {
-    wrap.innerHTML = '<span style="font-size:12px;color:var(--text-3);">Run a Network Scan to see devices here</span>';
+function toggleCustomPorts(val) {
+  const wrap = document.getElementById('ps-custom-wrap');
+  if (wrap) wrap.style.display = val === 'custom' ? 'block' : 'none';
+}
+
+function updateQuickFill() {
+  const container = document.getElementById('ps-quick-fill');
+  if (!container) return;
+
+  if (!S.devices || S.devices.length === 0) {
+    container.innerHTML = '<span class="ps-quick-empty">Run Network Scan to auto-populate target IPs</span>';
     return;
   }
 
-  wrap.innerHTML = S.devices.map(d => `
-    <button class="chip-ip" onclick="psQuickFill('${d.ip}')">${d.ip}</button>
+  const chipsHtml = S.devices.slice(0, 15).map(d => `
+    <button class="ps-quick-chip" onclick="setPortScanTarget('${d.ip}', this)">
+      <span>${d.deviceType?.icon ? getIconEmoji(d.deviceType.icon) : '💻'}</span>
+      <span>${d.ip}</span>
+    </button>
   `).join('');
+
+  container.innerHTML = chipsHtml;
+
+  const targetInput = document.getElementById('ps-target');
+  if (targetInput && !targetInput.value && S.devices.length > 0) {
+    targetInput.value = S.devices[0].ip;
+  }
 }
 
-function psQuickFill(ip) {
-  document.getElementById('ps-target').value = ip;
-}
-
-function toggleCustomPorts(val) {
-  const customWrap = document.getElementById('ps-custom-wrap');
-  customWrap.style.display = val === 'custom' ? 'block' : 'none';
+function setPortScanTarget(ip, btnEl) {
+  const targetInput = document.getElementById('ps-target');
+  if (targetInput) targetInput.value = ip;
+  document.querySelectorAll('.ps-quick-chip').forEach(c => c.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
 }
 
 async function startPortScan() {
-  const target = document.getElementById('ps-target').value.trim();
-  const profile = document.getElementById('ps-profile').value;
-  const customStr = document.getElementById('ps-custom').value.trim();
+  const targetInput = document.getElementById('ps-target');
+  const targetIp = targetInput ? targetInput.value.trim() : '';
 
-  if (!target) {
-    alert('Please enter a target IP address.');
+  if (!targetIp) {
+    alert('Please enter or select a Target IP Address to scan.');
     return;
   }
 
-  const btn     = document.getElementById('ps-start-btn');
-  const results = document.getElementById('ps-results');
-  btn.disabled  = true;
-  btn.innerHTML = `<div class="ps-spinner sm"></div> Scanning…`;
-  results.style.display = 'none';
+  const profile = document.getElementById('ps-profile').value;
+  const customPortsStr = document.getElementById('ps-custom') ? document.getElementById('ps-custom').value.trim() : '';
 
-  try {
-    const res = await fetch('/api/portscan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ip: target, profile, customPorts: customStr }),
-    });
+  const btnIcon = document.getElementById('ps-btn-icon');
+  const btnText = document.getElementById('ps-btn-text');
+  const resultsBox = document.getElementById('ps-results');
+  const statusEl = document.getElementById('ps-res-status');
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Port scan failed');
+  if (btnIcon) btnIcon.textContent = '⏳';
+  if (btnText) btnText.textContent = 'Scanning Ports…';
+  if (resultsBox) resultsBox.style.display = 'block';
+  if (statusEl) {
+    statusEl.className = 'badge';
+    statusEl.textContent = 'Scanning…';
+  }
 
-    renderPortScanResults(data);
-  } catch (err) {
-    alert(`Port scan error: ${err.message}`);
-  } finally {
-    btn.disabled  = false;
-    btn.innerHTML = `
-      <svg viewBox="0 0 20 20" fill="currentColor">
-        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
-      </svg> Run Port Scan`;
+  document.getElementById('ps-res-target').textContent = targetIp;
+  document.getElementById('ps-ports-grid').innerHTML = '<div style="color:var(--cyan);padding:24px;grid-column:1/-1;text-align:center;">Scanning TCP ports on target IP… Please wait.</div>';
+
+  if (S.mode === 'cloud') {
+    if (!S.selectedAgentId) {
+      alert('Please select an active Desktop Agent first.');
+      resetPortScanBtn();
+      return;
+    }
+
+    if (!S.cloudWS || S.cloudWS.readyState !== WebSocket.OPEN) {
+      connectCloudWS();
+    }
+
+    S.cloudWS.send(JSON.stringify({
+      action: 'port_scan',
+      agentId: S.selectedAgentId,
+      ip: targetIp,
+      profile,
+      customPorts: customPortsStr,
+    }));
+  } else {
+    try {
+      const res = await fetch(`/api/portscan?ip=${encodeURIComponent(targetIp)}&profile=${encodeURIComponent(profile)}&custom=${encodeURIComponent(customPortsStr)}`);
+      const data = await res.json();
+      renderPortScanResults(data);
+    } catch (err) {
+      alert(`Port Scan failed: ${err.message}`);
+    } finally {
+      resetPortScanBtn();
+    }
   }
 }
 
-function renderPortScanResults(d) {
-  const container = document.getElementById('ps-results');
-  const grid      = document.getElementById('ps-ports-grid');
+function resetPortScanBtn() {
+  const btnIcon = document.getElementById('ps-btn-icon');
+  const btnText = document.getElementById('ps-btn-text');
+  if (btnIcon) btnIcon.textContent = '⚡';
+  if (btnText) btnText.textContent = 'Run Port Scan';
+}
 
-  document.getElementById('ps-res-target').textContent  = d.ip;
-  document.getElementById('ps-res-scanned').textContent = d.scanned;
-  document.getElementById('ps-res-open').textContent    = d.open.length;
+function renderPortScanResults(data) {
+  resetPortScanBtn();
+  if (!data) return;
 
-  grid.innerHTML = d.results.map(r => `
-    <div class="ps-port-card ${r.open ? 'open' : 'closed'}">
-      <div class="ps-port-num mono">${r.port}</div>
-      <div class="ps-port-service">${escHtml(r.service)}</div>
-      <span class="ps-port-status">${r.open ? 'OPEN' : 'CLOSED'}</span>
+  portScanResultsCache = data;
+
+  document.getElementById('ps-res-target').textContent  = data.ip || '—';
+  document.getElementById('ps-res-scanned').textContent = data.scanned || 0;
+
+  const openCount = data.open ? data.open.length : (data.results ? data.results.filter(r => r.open).length : 0);
+  document.getElementById('ps-res-open').textContent = openCount;
+
+  const statusEl = document.getElementById('ps-res-status');
+  if (statusEl) {
+    statusEl.className = 'badge open-cnt';
+    statusEl.textContent = 'Completed';
+  }
+
+  const resultsList = data.results || [];
+  const closedCount = resultsList.length - openCount;
+
+  document.getElementById('ps-cnt-all').textContent    = resultsList.length;
+  document.getElementById('ps-cnt-open').textContent   = openCount;
+  document.getElementById('ps-cnt-closed').textContent = closedCount;
+
+  filterPortScanResults(currentPortFilter);
+}
+
+function filterPortScanResults(filter) {
+  currentPortFilter = filter;
+  document.querySelectorAll('.ps-filter-bar .pill').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === filter);
+  });
+
+  if (!portScanResultsCache || !portScanResultsCache.results) return;
+
+  let filtered = portScanResultsCache.results;
+  if (filter === 'open')   filtered = filtered.filter(r => r.open);
+  if (filter === 'closed') filtered = filtered.filter(r => !r.open);
+
+  const grid = document.getElementById('ps-ports-grid');
+  if (!grid) return;
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '<div style="color:var(--text-3);padding:30px;grid-column:1/-1;text-align:center;">No matching ports found.</div>';
+    return;
+  }
+
+  grid.innerHTML = filtered.map(r => `
+    <div class="port-card ${r.open ? 'open' : 'closed'}">
+      <div class="port-card-top">
+        <span class="port-num">Port ${r.port}</span>
+        <span class="port-badge ${r.open ? 'open' : 'closed'}">${r.open ? '🟢 OPEN' : '🔴 CLOSED'}</span>
+      </div>
+      <div class="port-service">
+        <span>${getServiceIcon(r.service, r.port)}</span>
+        <span>${r.service}</span>
+      </div>
     </div>
   `).join('');
+}
 
-  container.style.display = 'block';
+function getServiceIcon(service, port) {
+  const s = (service || '').toLowerCase();
+  if (s.includes('http') || port === 80 || port === 443 || port === 8080) return '🌐';
+  if (s.includes('ssh') || port === 22) return '🔑';
+  if (s.includes('ftp') || port === 21) return '📁';
+  if (s.includes('rdp') || port === 3389) return '💻';
+  if (s.includes('sql') || s.includes('redis') || s.includes('mongo') || port === 3306 || port === 5432) return '🗄️';
+  if (s.includes('printer') || port === 9100 || port === 515 || port === 631) return '🖨️';
+  if (s.includes('mqtt') || port === 1883) return '💡';
+  if (s.includes('dns') || port === 53) return '🔍';
+  return '🔌';
 }
 
 function closeModal() {
@@ -678,6 +779,10 @@ function handleCloudWSMessage(msg) {
 
   if (msg.type === 'scan_stream') {
     handleCloudScanStream(msg.event, msg.data);
+  }
+
+  if (msg.type === 'portscan_result') {
+    renderPortScanResults(msg.data);
   }
 }
 

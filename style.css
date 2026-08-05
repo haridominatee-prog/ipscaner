@@ -598,6 +598,231 @@ body {
 /* ── Utilities ───────────────────────────────────── */
 .mono { font-family:var(--mono); }
 
+/* ── PORT SCANNER ────────────────────────────────── */
+.ps-header { margin-bottom: 24px; }
+.ps-header h2 { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.ps-header p { font-size: 14px; color: var(--text-2); }
+
+.ps-controls {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 28px;
+  margin-bottom: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+
+.ps-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.ps-input-group label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-3);
+}
+
+.ps-input-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.ps-input-wrap input.input-text,
+.ps-input-group input.input-text,
+.ps-input-group select.input-select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.ps-input-wrap input.input-text:focus,
+.ps-input-group input.input-text:focus,
+.ps-input-group select.input-select:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ps-quick-label {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.ps-quick-fill {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ps-quick-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--cyan);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ps-quick-chip:hover {
+  background: rgba(0, 212, 255, 0.12);
+  border-color: rgba(0, 212, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.ps-quick-chip.active {
+  background: rgba(0, 212, 255, 0.2);
+  border-color: var(--cyan);
+  color: #fff;
+}
+
+.ps-quick-empty {
+  font-size: 12px;
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.ps-start-btn {
+  align-self: flex-start;
+  padding: 14px 32px;
+  font-size: 15px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--cyan), var(--purple));
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0, 212, 255, 0.25);
+  transition: all 0.25s;
+}
+
+.ps-start-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 212, 255, 0.4);
+}
+
+.ps-summary-bar {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 24px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.ps-sum-item {
+  font-size: 14px;
+  color: var(--text-2);
+}
+
+.ps-sum-item strong {
+  color: var(--cyan);
+}
+
+.badge.open-cnt {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--green);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.ps-ports-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.port-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.25s;
+}
+
+.port-card.open {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: linear-gradient(145deg, rgba(34, 197, 94, 0.05), var(--bg-card));
+  box-shadow: 0 4px 20px rgba(34, 197, 94, 0.08);
+}
+
+.port-card.closed {
+  opacity: 0.6;
+}
+
+.port-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.port-num {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.port-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.port-badge.open {
+  background: rgba(34, 197, 94, 0.2);
+  color: var(--green);
+}
+
+.port-badge.closed {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-3);
+}
+
+.port-service {
+  font-size: 13px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ── Footer ──────────────────────────────────────── */
 .footer {
   position:relative;z-index:1;text-align:center;

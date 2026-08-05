@@ -226,48 +226,55 @@
         <div class="ps-input-group">
           <label for="ps-target">Target IP Address</label>
           <div class="ps-input-wrap">
-            <input type="text" id="ps-target" class="mono" placeholder="192.168.1.1" />
-            <div class="ps-quick-fill" id="ps-quick-fill">
-              <!-- Quick fill chips generated dynamically -->
-            </div>
+            <input type="text" id="ps-target" class="mono input-text" placeholder="e.g. 192.168.0.1" />
+          </div>
+          <div class="ps-quick-label">Discovered Devices Quick-Select:</div>
+          <div class="ps-quick-fill" id="ps-quick-fill">
+            <span class="ps-quick-empty">Run Network Scan to auto-populate target IPs</span>
           </div>
         </div>
 
-        <div class="ps-input-group">
-          <label for="ps-profile">Scan Profile</label>
-          <select id="ps-profile" onchange="toggleCustomPorts(this.value)">
-            <option value="common">Common Ports (30 Services — Fast)</option>
-            <option value="quick">Quick Scan (14 Essential Ports)</option>
-            <option value="custom">Custom Port Range</option>
-          </select>
+        <div class="ps-input-row">
+          <div class="ps-input-group">
+            <label for="ps-profile">Scan Profile</label>
+            <select id="ps-profile" class="input-select" onchange="toggleCustomPorts(this.value)">
+              <option value="common">Common Ports (30 Services — Recommended)</option>
+              <option value="quick">Quick Scan (14 Essential Ports — Fast)</option>
+              <option value="custom">Custom Port List</option>
+            </select>
+          </div>
+
+          <div class="ps-input-group" id="ps-custom-wrap" style="display:none;">
+            <label for="ps-custom">Custom Ports (comma-separated)</label>
+            <input type="text" id="ps-custom" class="mono input-text" placeholder="22, 80, 443, 8080, 3306" />
+          </div>
         </div>
 
-        <div class="ps-input-group" id="ps-custom-wrap" style="display:none;">
-          <label for="ps-custom">Custom Ports (comma-separated)</label>
-          <input type="text" id="ps-custom" class="mono" placeholder="22, 80, 443, 8080, 3306" />
-        </div>
-
-        <button class="btn primary" id="ps-start-btn" onclick="startPortScan()">
-          <svg viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd"
-              d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-              clip-rule="evenodd" />
-          </svg>
-          Run Port Scan
+        <button class="btn btn-primary btn-lg ps-start-btn" id="ps-start-btn" onclick="startPortScan()">
+          <span id="ps-btn-icon">⚡</span>
+          <span id="ps-btn-text">Run Port Scan</span>
         </button>
       </div>
 
       <!-- Port Scan Results Container -->
       <div class="ps-results" id="ps-results" style="display:none;">
         <div class="ps-summary-bar">
-          <div>Target: <strong class="mono" id="ps-res-target">—</strong></div>
-          <div>Status: <span id="ps-res-status" class="badge">Completed</span></div>
-          <div>Scanned: <span class="mono" id="ps-res-scanned">0</span> ports</div>
-          <div>Open: <span class="badge open-cnt" id="ps-res-open">0</span></div>
+          <div class="ps-sum-item">Target: <strong class="mono" id="ps-res-target">—</strong></div>
+          <div class="ps-sum-item">Status: <span id="ps-res-status" class="badge">Completed</span></div>
+          <div class="ps-sum-item">Scanned: <span class="mono" id="ps-res-scanned">0</span> ports</div>
+          <div class="ps-sum-item">Open: <span class="badge open-cnt" id="ps-res-open">0</span></div>
+        </div>
+
+        <div class="filter-bar ps-filter-bar">
+          <div class="filter-pills">
+            <button class="pill active" data-filter="all" onclick="filterPortScanResults('all')">All Ports (<span id="ps-cnt-all">0</span>)</button>
+            <button class="pill" data-filter="open" onclick="filterPortScanResults('open')">🟢 Open Ports (<span id="ps-cnt-open">0</span>)</button>
+            <button class="pill" data-filter="closed" onclick="filterPortScanResults('closed')">🔴 Closed (<span id="ps-cnt-closed">0</span>)</button>
+          </div>
         </div>
 
         <div class="ps-ports-grid" id="ps-ports-grid">
-          <!-- Discovered ports cards -->
+          <!-- Discovered ports cards rendered dynamically -->
         </div>
       </div>
     </div>
