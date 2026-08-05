@@ -138,7 +138,7 @@ function checkPort(ip, port) {
   return new Promise((resolve) => {
     const sock = new net.Socket();
     let done = false;
-    sock.setTimeout(2000);
+    sock.setTimeout(500);
     sock.on('connect', () => { done = true; sock.destroy(); resolve(true); });
     sock.on('timeout', () => { if (!done) { done = true; sock.destroy(); resolve(false); } });
     sock.on('error',   () => { if (!done) { done = true; resolve(false); } });
@@ -241,7 +241,7 @@ function getSSHBanner(ip) {
   return new Promise((resolve) => {
     const sock = new net.Socket();
     let banner = '';
-    sock.setTimeout(2500);
+    sock.setTimeout(800);
     sock.on('connect', () => { });
     sock.on('data', (data) => {
       banner = data.toString().trim();
