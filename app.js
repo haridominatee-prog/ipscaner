@@ -627,9 +627,18 @@ function updateAgentNetworkHeader(agent) {
 
 function updateAgentBadge(isOnline) {
   const badge = document.getElementById('agent-status-badge');
-  if (!badge) return;
-  badge.className = `agent-status-badge ${isOnline ? 'online' : 'offline'}`;
-  badge.textContent = isOnline ? '● Online' : '● Offline';
+  if (badge) {
+    badge.className = `agent-status-badge ${isOnline ? 'online' : 'offline'}`;
+    badge.textContent = isOnline ? '● Online' : '● Offline';
+  }
+
+  if (S.mode === 'cloud') {
+    if (isOnline) {
+      setStatus('Agent Online — Ready to Scan', 'ok');
+    } else {
+      setStatus('Waiting for Desktop Agent…', '');
+    }
+  }
 }
 
 function connectCloudWS() {
