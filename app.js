@@ -69,20 +69,33 @@ function escHtml(str) {
 async function loadNetworkInfo() {
   try {
     const res  = await fetch('/api/network');
+    if (!res.ok) throw new Error('Network endpoint unavailable');
     const data = await res.json();
+    if (!data || data.error || !data.localIP) throw new Error('No local IP');
 
     document.getElementById('bar-myip').textContent    = data.localIP || 'Unknown';
     document.getElementById('bar-gateway').textContent = data.gateway || '—';
     document.getElementById('bar-subnet').textContent  = data.subnet  || '—';
-    document.getElementById('bar-ssid').textContent    = data.wifi?.ssid || 'Ethernet / Direct';
-    document.getElementById('bar-signal').textContent  = data.wifi?.signal || '100%';
+    document.getElementById('bar-ssid').textContent    = data.ssid || data.wifi?.ssid || 'Wi-Fi / LAN';
+    document.getElementById('bar-signal').textContent  = data.signal || data.wifi?.signal || '100%';
+
+    S.mode = 'local';
+    const cloudAgentBar = document.getElementById('cloud-agent-bar');
+    if (cloudAgentBar) cloudAgentBar.style.display = 'none';
 
     setStatus('Connected to local LAN', 'ok');
+    return true;
   } catch {
-    setStatus('Backend connection failed', 'err');
-    document.getElementById('bar-myip').textContent = 'No backend';
-    document.getElementById('bar-ssid').textContent = '—';
-    document.getElementById('bar-signal').textContent = '—';
+    document.getElementById('bar-myip').textContent    = 'Cloud Remote';
+    document.getElementById('bar-gateway').textContent = '—';
+    document.getElementById('bar-subnet').textContent  = '—';
+    document.getElementById('bar-ssid').textContent    = 'Remote Agents';
+    document.getElementById('bar-signal').textContent  = '—';
+
+    S.mode = 'cloud';
+    const cloudAgentBar = document.getElementById('cloud-agent-bar');
+    if (cloudAgentBar) cloudAgentBar.style.display = 'flex';
+    return false;
   }
 }
 
@@ -705,13 +718,16 @@ function handleCloudScanStream(event, d) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
-  setStatus('Connecting to Cloud Server…');
   setupPWA();
   loadPublicIP();
   updateQuickFill();
 
-  fetchUserAgents();
-  connectCloudWS();
+  const isLocal = await loadNetworkInfo();
+  if (!isLocal) {
+    setStatus('Ready (Cloud Agent Mode)');
+    fetchUserAgents();
+    connectCloudWS();
+  }
 }
 
 window.addEventListener('DOMContentLoaded', init);
