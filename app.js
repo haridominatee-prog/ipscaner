@@ -117,6 +117,10 @@ async function loadNetworkInfo() {
 async function startScan() {
   if (S.scanning) return;
 
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NetworkScanner) {
+    return startNativeAndroidScan();
+  }
+
   if (S.mode === 'cloud') {
     return startCloudScan();
   }
@@ -849,6 +853,75 @@ function startCloudScan() {
   }
 
   runRemoteAgentScan(selectedAgent);
+}
+
+async function startNativeAndroidScan() {
+  if (S.scanning) return;
+  S.scanning = true;
+  S.devices  = [];
+
+  const btn       = document.getElementById('scan-btn');
+  const progress  = document.getElementById('scan-progress');
+  const filterBar = document.getElementById('filter-bar');
+  const grid      = document.getElementById('device-grid');
+  const emptyState= document.getElementById('empty-state');
+  const countEl   = document.getElementById('bar-count');
+
+  btn.disabled = true;
+  btn.classList.add('scanning');
+  document.getElementById('scan-btn-text').textContent = 'Android Scanning…';
+  progress.style.display  = 'block';
+  filterBar.style.display = 'none';
+  emptyState.style.display= 'none';
+  grid.innerHTML = '';
+  countEl.textContent = '0';
+  setStatus('Scanning local Wi-Fi via Android Native Scanner…', '');
+
+  try {
+    const info = await window.Capacitor.Plugins.NetworkScanner.getNetworkInfo();
+    if (info) {
+      if (info.localIp) document.getElementById('bar-myip').textContent = info.localIp;
+      if (info.gateway) document.getElementById('bar-gateway').textContent = info.gateway;
+      if (info.ssid)    document.getElementById('bar-ssid').textContent = info.ssid;
+    }
+
+    const res = await window.Capacitor.Plugins.NetworkScanner.startScan();
+    const foundDevices = res ? (res.devices || []) : [];
+
+    for (const d of foundDevices) {
+      const devObj = {
+        ip: d.ip,
+        mac: d.mac || '—',
+        vendor: d.vendor || 'Network Device',
+        hostname: d.isGateway ? 'router.local' : null,
+        openPorts: [80],
+        sshBanner: null,
+        deviceType: d.isGateway ? { type: 'router', label: 'Router / Access Point', icon: 'router' }
+                                : { type: 'unknown', label: 'Network Device', icon: 'unknown' },
+        isGateway: d.isGateway,
+        isMe: d.ip === (info ? info.localIp : ''),
+        label: d.isGateway ? 'Gateway Router' : null,
+      };
+
+      S.devices.push(devObj);
+      countEl.textContent = S.devices.length;
+      appendDeviceCard(devObj, grid);
+      updateFilterCounts();
+    }
+
+    setStatus(`Android Native Scan Complete — Found ${S.devices.length} devices`, 'ok');
+    updateQuickFill();
+  } catch (err) {
+    alert(`Android Scan Error: ${err.message || err}`);
+  } finally {
+    S.scanning = false;
+    progress.style.display  = 'none';
+    filterBar.style.display = 'flex';
+    btn.disabled = false;
+    btn.classList.remove('scanning');
+    document.getElementById('scan-btn-text').textContent = 'Scan Network';
+    if (S.devices.length === 0) emptyState.style.display = 'flex';
+  }
 }
 
 function handleCloudScanStream(event, d) {
