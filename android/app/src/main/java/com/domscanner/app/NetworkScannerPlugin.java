@@ -125,6 +125,7 @@ public class NetworkScannerPlugin extends Plugin {
             String prefix = getSubnetPrefix(gatewayStr);
 
             Map<String, String> mdnsMap = scanMDNSHostnames();
+            Map<String, String> ssdpMap = scanSSDPDevices();
             Map<String, String> arpMap = readARPTable();
             JSArray devices = new JSArray();
             AtomicInteger scannedCount = new AtomicInteger(0);
@@ -167,13 +168,14 @@ public class NetworkScannerPlugin extends Plugin {
 
                             NetBIOSResult netbios = queryNetBIOS(targetIp);
                             String mdnsHost = mdnsMap.get(targetIp);
-                            String rawHostname = mdnsHost != null ? mdnsHost : (netbios.hostname != null ? netbios.hostname : getReverseDnsHostname(addr));
+                            String ssdpHost = ssdpMap.get(targetIp);
+                            String rawHostname = ssdpHost != null ? ssdpHost : (mdnsHost != null ? mdnsHost : (netbios.hostname != null ? netbios.hostname : getReverseDnsHostname(addr)));
                             String rawMac = !netbios.mac.equals("—") ? netbios.mac : arpMap.getOrDefault(targetIp, "—");
                             String rawVendor = isGw ? "Router / Access Point" : (isMe ? "This Mobile Phone" : getVendorFromMac(rawMac));
 
                             JSObject dev = new JSObject();
                             dev.put("ip", targetIp);
-                            dev.put("mac", rawMac.equals("—") ? "Not available on Android" : rawMac);
+                            dev.put("mac", rawMac.equals("—") ? "Restricted by Android OS (Privacy)" : rawMac);
                             dev.put("hostname", rawHostname != null ? rawHostname : "Not discovered");
                             dev.put("vendor", rawVendor.equals("Unknown") || rawVendor.equals("Network Device") ? "Not discovered" : rawVendor);
                             dev.put("isGateway", isGw);
@@ -228,6 +230,52 @@ public class NetworkScannerPlugin extends Plugin {
         }
     }
 
+    private Map<String, String> scanSSDPDevices() {
+        Map<String, String> map = new ConcurrentHashMap<>();
+        try {
+            InetAddress group = InetAddress.getByName("239.255.255.250");
+            MulticastSocket socket = new MulticastSocket(1900);
+            socket.setSoTimeout(1000);
+            socket.joinGroup(group);
+
+            String mSearch = "M-SEARCH * HTTP/1.1\r\n" +
+                             "HOST: 239.255.255.250:1900\r\n" +
+                             "MAN: \"ssdp:discover\"\r\n" +
+                             "MX: 1\r\n" +
+                             "ST: ssdp:all\r\n\r\n";
+            byte[] query = mSearch.getBytes();
+            DatagramPacket packet = new DatagramPacket(query, query.length, group, 1900);
+            socket.send(packet);
+
+            long endTime = System.currentTimeMillis() + 1000;
+            byte[] buf = new byte[2048];
+
+            while (System.currentTimeMillis() < endTime) {
+                try {
+                    DatagramPacket resp = new DatagramPacket(buf, buf.length);
+                    socket.receive(resp);
+                    String senderIp = resp.getAddress().getHostAddress();
+                    String str = new String(resp.getData(), 0, resp.getLength());
+
+                    Pattern pServer = Pattern.compile("SERVER:\\s*(.+)", Pattern.CASE_INSENSITIVE);
+                    Matcher mServer = pServer.matcher(str);
+                    if (mServer.find()) {
+                        String serverInfo = mServer.group(1).trim();
+                        if (serverInfo.length() < 60) {
+                            map.put(senderIp, serverInfo);
+                        }
+                    }
+                } catch (IOException ignored) {
+                    break;
+                }
+            }
+
+            socket.leaveGroup(group);
+            socket.close();
+        } catch (Exception ignored) {}
+        return map;
+    }
+
     private Map<String, String> scanMDNSHostnames() {
         Map<String, String> map = new ConcurrentHashMap<>();
         try {
@@ -280,7 +328,7 @@ public class NetworkScannerPlugin extends Plugin {
 
     private String calculateConfidence(boolean isGw, boolean isMe, String mac, String vendor, String hostname, List<Integer> ports) {
         if (isGw || isMe) return "High (95%)";
-        boolean hasMac = mac != null && !mac.startsWith("Not");
+        boolean hasMac = mac != null && !mac.startsWith("Restricted") && !mac.startsWith("Not");
         boolean hasHost = hostname != null && !hostname.startsWith("Not");
         boolean hasVendor = vendor != null && !vendor.startsWith("Not");
         boolean hasPorts = ports != null && !ports.isEmpty();
@@ -509,7 +557,7 @@ public class NetworkScannerPlugin extends Plugin {
     }
 
     private String getVendorFromMac(String mac) {
-        if (mac == null || mac.equals("—") || mac.startsWith("Not") || mac.length() < 8) return "Not discovered";
+        if (mac == null || mac.equals("—") || mac.startsWith("Restricted") || mac.startsWith("Not") || mac.length() < 8) return "Not discovered";
         String p = mac.toUpperCase(Locale.US).substring(0, 8);
 
         if (p.startsWith("B8:27:EB") || p.startsWith("DC:A6:32") || p.startsWith("E4:5F:01") || p.startsWith("D8:3A:DD") || p.startsWith("2C:CF:67")) return "Raspberry Pi";
