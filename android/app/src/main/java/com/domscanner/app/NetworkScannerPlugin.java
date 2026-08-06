@@ -2,9 +2,13 @@ package com.domscanner.app;
 
 import android.Manifest;
 import android.content.Context;
+import android.net.ConnectivityManager;
 import android.net.DhcpInfo;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.text.format.Formatter;
 
 import com.getcapacitor.JSArray;
@@ -61,7 +65,7 @@ public class NetworkScannerPlugin extends Plugin {
 
             String ipStr = getLocalIpStr(wifiInfo);
             String gatewayStr = getGatewayIpStr(dhcpInfo);
-            String ssid = getSsidStr(wifiInfo);
+            String ssid = getSsidStr(wifiInfo, dhcpInfo);
             int rssi = wifiInfo != null ? wifiInfo.getRssi() : -50;
             int signalLevel = WifiManager.calculateSignalLevel(rssi, 100);
 
@@ -124,11 +128,9 @@ public class NetworkScannerPlugin extends Plugin {
                         boolean reachable = false;
                         List<Integer> openPortsList = new ArrayList<>();
                         try {
-                            // 1. Standard InetAddress reachability check
                             InetAddress addr = InetAddress.getByName(targetIp);
                             reachable = addr.isReachable(280);
 
-                            // 2. Comprehensive multi-port probing
                             int[] probePorts = {80, 443, 8080, 22, 139, 445, 53, 3389, 8000, 5000, 8888, 1900};
                             for (int port : probePorts) {
                                 try (Socket socket = new Socket()) {
@@ -143,7 +145,6 @@ public class NetworkScannerPlugin extends Plugin {
                                 boolean isGw = targetIp.equals(gatewayStr);
                                 boolean isMe = targetIp.equals(myIp);
 
-                                // Perform NetBIOS & Hostname resolution
                                 NetBIOSResult netbios = queryNetBIOS(targetIp);
                                 String hostname = netbios.hostname != null ? netbios.hostname : getReverseDnsHostname(addr);
                                 String mac = !netbios.mac.equals("—") ? netbios.mac : arpMap.getOrDefault(targetIp, "—");
@@ -230,7 +231,6 @@ public class NetworkScannerPlugin extends Plugin {
         String mac = "—";
     }
 
-    /** Query NetBIOS UDP 137 to resolve Hostname and MAC Address on Android 10+ */
     private NetBIOSResult queryNetBIOS(String ip) {
         NetBIOSResult res = new NetBIOSResult();
         try (DatagramSocket socket = new DatagramSocket()) {
@@ -303,14 +303,35 @@ public class NetworkScannerPlugin extends Plugin {
         return "192.168.1.1";
     }
 
-    private String getSsidStr(WifiInfo wifiInfo) {
+    private String getSsidStr(WifiInfo wifiInfo, DhcpInfo dhcpInfo) {
         if (wifiInfo != null && wifiInfo.getSSID() != null) {
             String ssid = wifiInfo.getSSID().replace("\"", "");
             if (!ssid.isEmpty() && !ssid.equals("<unknown ssid>")) {
                 return ssid;
             }
         }
-        return "Mobile Wi-Fi";
+        try {
+            Context context = getContext();
+            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                Network activeNet = cm.getActiveNetwork();
+                if (activeNet != null) {
+                    NetworkCapabilities nc = cm.getNetworkCapabilities(activeNet);
+                    if (nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                        WifiInfo info = (WifiInfo) nc.getTransportInfo();
+                        if (info != null && info.getSSID() != null) {
+                            String ssid = info.getSSID().replace("\"", "");
+                            if (!ssid.isEmpty() && !ssid.equals("<unknown ssid>")) {
+                                return ssid;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        String gw = getGatewayIpStr(dhcpInfo);
+        return "Wi-Fi LAN (" + getSubnetPrefix(gw) + ".x)";
     }
 
     private String getSubnetPrefix(String ip) {

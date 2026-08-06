@@ -1008,6 +1008,14 @@ async function startNativeAndroidScan() {
             label: d.isGateway ? 'Gateway Router' : (d.isMe ? 'This Phone' : null),
           };
 
+          if (d.isGateway) {
+            const currentSSID = document.getElementById('bar-ssid').textContent;
+            if (!currentSSID || currentSSID.includes('Mobile Wi-Fi') || currentSSID.includes('unknown')) {
+              const gwName = d.hostname || (d.vendor && d.vendor !== 'Network Device' ? d.vendor + ' Router' : 'Wi-Fi Network (' + d.ip + ')');
+              document.getElementById('bar-ssid').textContent = gwName;
+            }
+          }
+
           if (!S.devices.some(existing => existing.ip === devObj.ip)) {
             S.devices.push(devObj);
             countEl.textContent = S.devices.length;
@@ -1026,9 +1034,14 @@ async function startNativeAndroidScan() {
         if (info) {
           if (info.localIp) document.getElementById('bar-myip').textContent = info.localIp;
           if (info.gateway) document.getElementById('bar-gateway').textContent = info.gateway;
-          if (info.ssid)    document.getElementById('bar-ssid').textContent = info.ssid;
           if (info.signal)  document.getElementById('bar-signal').textContent = info.signal;
           if (info.subnet)  document.getElementById('bar-subnet').textContent = info.subnet;
+          if (info.ssid && !info.ssid.includes('Mobile Wi-Fi') && !info.ssid.includes('unknown')) {
+            document.getElementById('bar-ssid').textContent = info.ssid;
+          } else if (info.gateway) {
+            const prefix = info.gateway.substring(0, info.gateway.lastIndexOf('.'));
+            document.getElementById('bar-ssid').textContent = `Wi-Fi Network (${prefix}.x)`;
+          }
         }
       } catch (err3) {
         console.warn('getNetworkInfo warning:', err3);
@@ -1177,7 +1190,7 @@ async function initNativeAndroidMode() {
 
   let localIp = '192.168.1.100';
   let gateway = '192.168.1.1';
-  let ssid    = 'Mobile Wi-Fi';
+  let ssid    = 'Wi-Fi Network';
   let signal  = '100%';
   let subnet  = '192.168.1.0/24';
 
@@ -1187,7 +1200,12 @@ async function initNativeAndroidMode() {
       if (info) {
         if (info.localIp) localIp = info.localIp;
         if (info.gateway) gateway = info.gateway;
-        if (info.ssid)    ssid    = info.ssid;
+        if (info.ssid && !info.ssid.includes('Mobile Wi-Fi') && !info.ssid.includes('unknown')) {
+          ssid = info.ssid;
+        } else if (info.gateway) {
+          const prefix = info.gateway.substring(0, info.gateway.lastIndexOf('.'));
+          ssid = `Wi-Fi (${prefix}.x)`;
+        }
         if (info.signal)  signal  = info.signal;
         if (info.subnet)  subnet  = info.subnet;
       }
