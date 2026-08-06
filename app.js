@@ -1124,10 +1124,37 @@ async function initCloudMode() {
   setInterval(fetchUserAgents, 10000);
 }
 
+async function initNativeAndroidMode() {
+  const ns = window.Capacitor?.Plugins?.NetworkScanner;
+  if (!ns) return;
+
+  S.mode = 'native';
+  const cloudAgentBar = document.getElementById('cloud-agent-bar');
+  if (cloudAgentBar) cloudAgentBar.style.display = 'none';
+
+  try {
+    const info = await ns.getNetworkInfo();
+    if (info) {
+      if (info.localIp) document.getElementById('bar-myip').textContent = info.localIp;
+      if (info.gateway) document.getElementById('bar-gateway').textContent = info.gateway;
+      if (info.ssid)    document.getElementById('bar-ssid').textContent = info.ssid;
+      if (info.signal)  document.getElementById('bar-signal').textContent = info.signal;
+      if (info.subnet)  document.getElementById('bar-subnet').textContent = info.subnet;
+    }
+  } catch {}
+
+  setStatus('Mobile Native Engine Ready — 0 PC Required', 'ok');
+}
+
 async function init() {
   setupPWA();
   loadPublicIP();
   updateQuickFill();
+
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NetworkScanner) {
+    await initNativeAndroidMode();
+    return;
+  }
 
   const isLocal = await loadNetworkInfo();
   if (!isLocal) {
