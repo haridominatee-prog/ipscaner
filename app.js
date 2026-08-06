@@ -1334,6 +1334,8 @@ async function initNativeAndroidMode() {
   connectMobileAgentCloud(localIp, ssid, signal);
 }
 
+let mobileAgentHeartbeatTimer = null;
+
 function connectMobileAgentCloud(localIp, ssid, signal) {
   const host = location.host.includes('.onrender.com') ? location.host : 'ipscaner.onrender.com';
   const agentKey = 'mobile_android_' + Math.random().toString(36).substring(2, 9);
@@ -1341,10 +1343,14 @@ function connectMobileAgentCloud(localIp, ssid, signal) {
 
   try {
     if (mobileAgentWS) { try { mobileAgentWS.close(); } catch {} }
+    if (mobileAgentHeartbeatTimer) { clearInterval(mobileAgentHeartbeatTimer); mobileAgentHeartbeatTimer = null; }
+
     mobileAgentWS = new WebSocket(wsUrl);
 
     mobileAgentWS.onopen = () => {
       console.log('✅ Android Phone registered as Cloud Agent on Render');
+      updateAgentBadge(true);
+      setStatus('Android Mobile Agent Active — 24/7 Connected', 'ok');
     };
 
     mobileAgentWS.onmessage = async (e) => {
@@ -1365,12 +1371,25 @@ function connectMobileAgentCloud(localIp, ssid, signal) {
       } catch {}
     };
 
-    setInterval(() => {
+    mobileAgentWS.onclose = () => {
+      console.log('⚠️ Mobile Agent WebSocket closed — auto-reconnecting in 3s…');
+      if (mobileAgentHeartbeatTimer) { clearInterval(mobileAgentHeartbeatTimer); mobileAgentHeartbeatTimer = null; }
+      setTimeout(() => connectMobileAgentCloud(localIp, ssid, signal), 3000);
+    };
+
+    mobileAgentWS.onerror = (err) => {
+      console.warn('Mobile Agent WebSocket error:', err);
+    };
+
+    mobileAgentHeartbeatTimer = setInterval(() => {
       if (mobileAgentWS && mobileAgentWS.readyState === 1) {
         mobileAgentWS.send(JSON.stringify({ type: 'heartbeat', localIp, ssid, signal }));
       }
     }, 15000);
-  } catch {}
+  } catch (e) {
+    console.warn('connectMobileAgentCloud exception:', e);
+    setTimeout(() => connectMobileAgentCloud(localIp, ssid, signal), 5000);
+  }
 }
 
 async function init() {

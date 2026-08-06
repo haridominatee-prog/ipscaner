@@ -499,7 +499,7 @@ public class NetworkScannerPlugin extends Plugin {
         } catch (Exception ignored) {}
 
         String gw = getGatewayIpStr(dhcpInfo);
-        return "Wi-Fi LAN (" + getSubnetPrefix(gw) + ".x)";
+        return "Wi-Fi Network (" + getSubnetPrefix(gw) + ".x)";
     }
 
     private String getSubnetPrefix(String ip) {
