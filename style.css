@@ -598,6 +598,135 @@ body {
 /* ── Utilities ───────────────────────────────────── */
 .mono { font-family:var(--mono); }
 
+/* ── View Toggle & Detailed Table View ────────────────────────────── */
+.view-toggle {
+  display: flex;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+.view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.view-btn:hover {
+  color: var(--text);
+}
+.view-btn.active {
+  background: rgba(0, 212, 255, 0.15);
+  color: var(--cyan);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+}
+
+.device-table-container {
+  margin-top: 16px;
+  padding: 0;
+  overflow: hidden;
+}
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.device-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+.device-table th {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.device-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: middle;
+}
+.device-table tbody tr {
+  transition: background 0.15s;
+}
+.device-table tbody tr:hover {
+  background: rgba(0, 212, 255, 0.04);
+}
+.device-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.dt-name {
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dt-icon {
+  font-size: 16px;
+}
+.dt-ip {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--cyan);
+}
+.dt-mac {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.dt-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.dt-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+}
+.dt-confidence {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-block;
+}
+.conf-high {
+  background: rgba(34, 197, 94, 0.12);
+  color: var(--green);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+.conf-medium {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--amber);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+.conf-low {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--red);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+}
+
 /* ── PORT SCANNER ────────────────────────────────── */
 .ps-header { margin-bottom: 24px; }
 .ps-header h2 { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 6px; }

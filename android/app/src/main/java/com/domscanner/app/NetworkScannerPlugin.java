@@ -52,7 +52,8 @@ import java.util.regex.Pattern;
             strings = {
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_WIFI_STATE
+                Manifest.permission.ACCESS_WIFI_STATE,
+                Manifest.permission.NEARBY_WIFI_DEVICES
             }
         )
     }
@@ -117,77 +118,84 @@ public class NetworkScannerPlugin extends Plugin {
             AtomicInteger scannedCount = new AtomicInteger(0);
             AtomicInteger foundCount = new AtomicInteger(0);
 
-            List<String> prefixes = new ArrayList<>();
-            prefixes.add(prefix);
-            if (!prefix.equals("192.168.0") && !prefix.equals("192.168.1")) {
-                prefixes.add("192.168.0");
-                prefixes.add("192.168.1");
-            }
+            int totalTargetIps = 254;
 
-            int totalTargetIps = prefixes.size() * 254;
+            for (int i = 1; i <= 254; i++) {
+                final String targetIp = prefix + "." + i;
+                executor.execute(() -> {
+                    long startTime = System.currentTimeMillis();
+                    boolean reachable = false;
+                    List<Integer> openPortsList = new ArrayList<>();
+                    long responseTimeMs = -1;
 
-            for (String subPrefix : prefixes) {
-                for (int i = 1; i <= 254; i++) {
-                    final String targetIp = subPrefix + "." + i;
-                    executor.execute(() -> {
-                        boolean reachable = false;
-                        List<Integer> openPortsList = new ArrayList<>();
-                        try {
-                            InetAddress addr = InetAddress.getByName(targetIp);
-                            reachable = addr.isReachable(280);
-
-                            int[] probePorts = {80, 443, 8080, 22, 139, 445, 53, 3389, 8000, 5000, 8888, 1900};
-                            for (int port : probePorts) {
-                                try (Socket socket = new Socket()) {
-                                    socket.connect(new InetSocketAddress(targetIp, port), 180);
-                                    reachable = true;
-                                    openPortsList.add(port);
-                                } catch (IOException ignored) {}
-                            }
-
-                            if (reachable) {
-                                foundCount.incrementAndGet();
-                                boolean isGw = targetIp.equals(gatewayStr);
-                                boolean isMe = targetIp.equals(myIp);
-
-                                NetBIOSResult netbios = queryNetBIOS(targetIp);
-                                String hostname = netbios.hostname != null ? netbios.hostname : getReverseDnsHostname(addr);
-                                String mac = !netbios.mac.equals("—") ? netbios.mac : arpMap.getOrDefault(targetIp, "—");
-                                String vendor = isGw ? "Router / Access Point" : (isMe ? "This Mobile Phone" : getVendorFromMac(mac));
-
-                                JSObject dev = new JSObject();
-                                dev.put("ip", targetIp);
-                                dev.put("mac", mac);
-                                dev.put("hostname", hostname);
-                                dev.put("vendor", vendor);
-                                dev.put("isGateway", isGw);
-                                dev.put("isMe", isMe);
-                                dev.put("openPorts", listToJSArray(openPortsList));
-
-                                // Perform HTTP page title banner extraction for web devices
-                                if (openPortsList.contains(80) || openPortsList.contains(8080) || openPortsList.contains(8000)) {
-                                    enrichHttpDevice(targetIp, openPortsList, dev);
-                                }
-
-                                dev.put("deviceType", getDeviceTypeObj(isGw, isMe, dev.getString("vendor"), openPortsList, dev.getString("hostname")));
-
-                                synchronized (devices) {
-                                    devices.put(dev);
-                                }
-
-                                notifyListeners("deviceDiscovered", dev);
-                            }
-                        } catch (Exception ignored) {
-                        } finally {
-                            int currentScanned = scannedCount.incrementAndGet();
-                            JSObject progress = new JSObject();
-                            progress.put("scanned", currentScanned);
-                            progress.put("total", totalTargetIps);
-                            progress.put("found", foundCount.get());
-                            notifyListeners("scanProgress", progress);
+                    try {
+                        InetAddress addr = InetAddress.getByName(targetIp);
+                        reachable = addr.isReachable(300);
+                        if (reachable) {
+                            responseTimeMs = System.currentTimeMillis() - startTime;
                         }
-                    });
-                }
+
+                        int[] probePorts = {80, 443, 8080, 22, 139, 445, 53, 3389, 8000, 5000, 8888, 1900};
+                        for (int port : probePorts) {
+                            long pStart = System.currentTimeMillis();
+                            try (Socket socket = new Socket()) {
+                                socket.connect(new InetSocketAddress(targetIp, port), 200);
+                                reachable = true;
+                                if (responseTimeMs < 0) {
+                                    responseTimeMs = System.currentTimeMillis() - pStart;
+                                }
+                                openPortsList.add(port);
+                            } catch (IOException ignored) {}
+                        }
+
+                        if (reachable) {
+                            foundCount.incrementAndGet();
+                            boolean isGw = targetIp.equals(gatewayStr);
+                            boolean isMe = targetIp.equals(myIp);
+
+                            NetBIOSResult netbios = queryNetBIOS(targetIp);
+                            String rawHostname = netbios.hostname != null ? netbios.hostname : getReverseDnsHostname(addr);
+                            String rawMac = !netbios.mac.equals("—") ? netbios.mac : arpMap.getOrDefault(targetIp, "—");
+                            String rawVendor = isGw ? "Router / Access Point" : (isMe ? "This Mobile Phone" : getVendorFromMac(rawMac));
+
+                            JSObject dev = new JSObject();
+                            dev.put("ip", targetIp);
+                            dev.put("mac", rawMac.equals("—") ? "Not available on Android" : rawMac);
+                            dev.put("hostname", rawHostname != null ? rawHostname : "Not discovered");
+                            dev.put("vendor", rawVendor.equals("Unknown") || rawVendor.equals("Network Device") ? "Not discovered" : rawVendor);
+                            dev.put("isGateway", isGw);
+                            dev.put("isMe", isMe);
+                            dev.put("status", "Online (" + (responseTimeMs > 0 ? responseTimeMs : 15) + " ms)");
+                            dev.put("responseTimeMs", responseTimeMs > 0 ? responseTimeMs : 15);
+                            dev.put("openPorts", listToJSArray(openPortsList));
+                            dev.put("servicesFormatted", formatServicesList(openPortsList));
+
+                            if (openPortsList.contains(80) || openPortsList.contains(8080) || openPortsList.contains(8000)) {
+                                enrichHttpDevice(targetIp, openPortsList, dev);
+                            }
+
+                            String finalVendor = dev.getString("vendor");
+                            String finalHostname = dev.getString("hostname");
+                            String confidence = calculateConfidence(isGw, isMe, rawMac, finalVendor, finalHostname, openPortsList);
+                            dev.put("confidence", confidence);
+                            dev.put("deviceType", getDeviceTypeObj(isGw, isMe, finalVendor, openPortsList, finalHostname));
+
+                            synchronized (devices) {
+                                devices.put(dev);
+                            }
+
+                            notifyListeners("deviceDiscovered", dev);
+                        }
+                    } catch (Exception ignored) {
+                    } finally {
+                        int currentScanned = scannedCount.incrementAndGet();
+                        JSObject progress = new JSObject();
+                        progress.put("scanned", currentScanned);
+                        progress.put("total", totalTargetIps);
+                        progress.put("found", foundCount.get());
+                        notifyListeners("scanProgress", progress);
+                    }
+                });
             }
 
             executor.shutdown();
@@ -201,6 +209,34 @@ public class NetworkScannerPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("Scan error: " + e.getMessage());
         }
+    }
+
+    private String calculateConfidence(boolean isGw, boolean isMe, String mac, String vendor, String hostname, List<Integer> ports) {
+        if (isGw || isMe) return "High (95%)";
+        boolean hasMac = mac != null && !mac.startsWith("Not");
+        boolean hasHost = hostname != null && !hostname.startsWith("Not");
+        boolean hasVendor = vendor != null && !vendor.startsWith("Not");
+        boolean hasPorts = ports != null && !ports.isEmpty();
+
+        if (hasMac && (hasHost || hasVendor)) return "High (90%)";
+        if (hasHost || hasVendor) return "High (85%)";
+        if (hasPorts) return "Medium (70%)";
+        return "Low (40%)";
+    }
+
+    private String formatServicesList(List<Integer> ports) {
+        if (ports == null || ports.isEmpty()) return "None detected";
+        List<String> list = new ArrayList<>();
+        for (int p : ports) {
+            if (p == 80) list.add("80 (HTTP)");
+            else if (p == 443) list.add("443 (HTTPS)");
+            else if (p == 22) list.add("22 (SSH)");
+            else if (p == 139 || p == 445) list.add(p + " (SMB/NetBIOS)");
+            else if (p == 3389) list.add("3389 (RDP)");
+            else if (p == 8080 || p == 8000) list.add(p + " (Web Server)");
+            else list.add(String.valueOf(p));
+        }
+        return String.join(", ", list);
     }
 
     private void enrichHttpDevice(String ip, List<Integer> openPorts, JSObject dev) {
@@ -405,7 +441,7 @@ public class NetworkScannerPlugin extends Plugin {
     }
 
     private String getVendorFromMac(String mac) {
-        if (mac == null || mac.equals("—") || mac.length() < 8) return "Network Device";
+        if (mac == null || mac.equals("—") || mac.startsWith("Not") || mac.length() < 8) return "Not discovered";
         String p = mac.toUpperCase(Locale.US).substring(0, 8);
 
         if (p.startsWith("B8:27:EB") || p.startsWith("DC:A6:32") || p.startsWith("E4:5F:01") || p.startsWith("D8:3A:DD") || p.startsWith("2C:CF:67")) return "Raspberry Pi";
@@ -428,7 +464,7 @@ public class NetworkScannerPlugin extends Plugin {
         if (p.startsWith("74:C2:46") || p.startsWith("44:65:0D") || p.startsWith("AC:63:BE") || p.startsWith("68:54:5A") || p.startsWith("F0:D2:F1") || p.startsWith("FC:A6:67")) return "Amazon Echo / Fire TV";
         if (p.startsWith("70:89:76") || p.startsWith("18:69:D8") || p.startsWith("D8:0D:17") || p.startsWith("50:02:91") || p.startsWith("D4:A6:42")) return "Tuya Smart Device";
 
-        return "Network Device";
+        return "Not discovered";
     }
 
     private JSObject getDeviceTypeObj(boolean isGw, boolean isMe, String vendor, List<Integer> openPorts, String hostname) {
