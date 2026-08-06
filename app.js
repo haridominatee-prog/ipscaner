@@ -840,8 +840,98 @@ function handleCloudWSMessage(msg) {
     handleCloudScanStream(msg.event, msg.data);
   }
 
+  if (msg.type === 'scan_initiated') {
+    // Scan command accepted by server and forwarded to agent
+    setStatus(`Agent is scanning... results will stream in real-time.`, '');
+  }
+
+  if (msg.type === 'scan_error') {
+    // Scan command rejected by server
+    const btn = document.getElementById('scan-btn');
+    S.scanning = false;
+    if (btn) { btn.disabled = false; btn.classList.remove('scanning'); }
+    const textEl = document.getElementById('scan-btn-text');
+    if (textEl) textEl.textContent = 'Scan Network';
+    const progress = document.getElementById('scan-progress');
+    if (progress) progress.style.display = 'none';
+    const emptyState = document.getElementById('empty-state');
+    if (emptyState && S.devices.length === 0) emptyState.style.display = 'flex';
+    setStatus(`Scan error: ${msg.message || 'Agent rejected scan command'}`, 'err');
+    console.error('❌ Scan error from server:', msg.message);
+  }
+
   if (msg.type === 'portscan_result') {
     renderPortScanResults(msg.data);
+  }
+}
+
+function runRemoteAgentScan(agent) {
+  if (S.scanning) return;
+
+  // readyState 1 = OPEN (works in all browsers, avoids WebSocket.OPEN reference issues)
+  if (!S.cloudWS || S.cloudWS.readyState !== 1) {
+    setStatus('Reconnecting to cloud server...', '');
+    connectCloudWS();
+    // Retry after 2s once WebSocket reconnects
+    setTimeout(() => {
+      if (S.cloudWS && S.cloudWS.readyState === 1) {
+        runRemoteAgentScan(agent);
+      } else {
+        setStatus('Could not connect to cloud server. Please refresh.', 'err');
+      }
+    }, 2000);
+    return;
+  }
+
+  S.scanning = true;
+  S.devices  = [];
+
+  const btn       = document.getElementById('scan-btn');
+  const progress  = document.getElementById('scan-progress');
+  const filterBar = document.getElementById('filter-bar');
+  const grid      = document.getElementById('device-grid');
+  const emptyState= document.getElementById('empty-state');
+  const countEl   = document.getElementById('bar-count');
+
+  btn.disabled = true;
+  btn.classList.add('scanning');
+  document.getElementById('scan-btn-text').textContent = 'Remote Scanning…';
+  progress.style.display  = 'block';
+  filterBar.style.display = 'none';
+  emptyState.style.display= 'none';
+  grid.innerHTML = '';
+  countEl.textContent = '0';
+  setStatus(`Commanding agent \"${agent.agent_name || 'Desktop'}\" to scan network…`, '');
+
+  // Safety timeout — if scan never starts within 30s, unblock button
+  const scanTimeout = setTimeout(() => {
+    if (S.scanning) {
+      S.scanning = false;
+      btn.disabled = false;
+      btn.classList.remove('scanning');
+      document.getElementById('scan-btn-text').textContent = 'Scan Network';
+      progress.style.display = 'none';
+      if (S.devices.length === 0 && emptyState) emptyState.style.display = 'flex';
+      setStatus('Scan timed out — agent may be unreachable. Try again.', 'err');
+    }
+  }, 30000);
+
+  // Store so done/error events can clear it
+  S._scanTimeout = scanTimeout;
+
+  try {
+    S.cloudWS.send(JSON.stringify({
+      action: 'start_scan',
+      agentId: agent.id
+    }));
+  } catch (err) {
+    clearTimeout(S._scanTimeout);
+    S.scanning = false;
+    btn.disabled = false;
+    btn.classList.remove('scanning');
+    document.getElementById('scan-btn-text').textContent = 'Scan Network';
+    progress.style.display = 'none';
+    setStatus('Failed to send scan command — WebSocket error.', 'err');
   }
 }
 
@@ -950,6 +1040,7 @@ function handleCloudScanStream(event, d) {
     appendDeviceCard(d, grid);
     updateFilterCounts();
   } else if (event === 'done') {
+    if (S._scanTimeout) { clearTimeout(S._scanTimeout); S._scanTimeout = null; }
     S.scanning = false;
     progress.style.display  = 'none';
     filterBar.style.display = 'flex';
@@ -961,6 +1052,7 @@ function handleCloudScanStream(event, d) {
     if (S.devices.length === 0) emptyState.style.display = 'flex';
     document.getElementById('progress-fill').style.width = '100%';
   } else if (event === 'error') {
+    if (S._scanTimeout) { clearTimeout(S._scanTimeout); S._scanTimeout = null; }
     S.scanning = false;
     btn.disabled = false;
     btn.classList.remove('scanning');
