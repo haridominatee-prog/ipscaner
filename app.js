@@ -1158,6 +1158,9 @@ async function startNativeAndroidScan() {
     countEl.textContent = S.devices.length;
     setStatus(`Android Native Scan Complete — Found ${S.devices.length} devices`, 'ok');
     updateQuickFill();
+
+    // Automatically sync Desktop Agent ARP table if available
+    syncDesktopAgentARP();
   } catch (err) {
     setStatus(`Android Scan Error: ${err.message || err}`, 'err');
   } finally {
@@ -1174,6 +1177,23 @@ async function startNativeAndroidScan() {
     btn.classList.remove('scanning');
     document.getElementById('scan-btn-text').textContent = 'Scan Again';
     if (S.devices.length === 0 && emptyState) emptyState.style.display = 'flex';
+  }
+}
+
+async function syncDesktopAgentARP() {
+  const onlineAgent = S.agents.find(a => a.status === 'online');
+  if (!onlineAgent) return;
+
+  try {
+    setStatus('Syncing 100% ARP & Vendor details from Desktop Agent…', '');
+    if (S.cloudWS && S.cloudWS.readyState === WebSocket.OPEN) {
+      S.cloudWS.send(JSON.stringify({
+        action: 'get_arp_table',
+        agentId: onlineAgent.id
+      }));
+    }
+  } catch (e) {
+    console.warn('Desktop Agent ARP sync error:', e);
   }
 }
 

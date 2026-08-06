@@ -30,6 +30,7 @@ import java.net.DatagramSocket;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MulticastSocket;
 import java.net.Socket;
 import java.net.URL;
 import java.util.ArrayList;
@@ -37,6 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -103,16 +105,26 @@ public class NetworkScannerPlugin extends Plugin {
 
     private void executeScan(PluginCall call) {
         ExecutorService executor = Executors.newFixedThreadPool(60);
+        WifiManager.MulticastLock multicastLock = null;
         try {
             Context context = getContext();
             WifiManager wifiManager = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             DhcpInfo dhcpInfo = wifiManager != null ? wifiManager.getDhcpInfo() : null;
             WifiInfo wifiInfo = wifiManager != null ? wifiManager.getConnectionInfo() : null;
 
+            if (wifiManager != null) {
+                try {
+                    multicastLock = wifiManager.createMulticastLock("DOMScannerMDNS");
+                    multicastLock.setReferenceCounted(true);
+                    multicastLock.acquire();
+                } catch (Exception ignored) {}
+            }
+
             String gatewayStr = getGatewayIpStr(dhcpInfo);
             String myIp = getLocalIpStr(wifiInfo);
             String prefix = getSubnetPrefix(gatewayStr);
 
+            Map<String, String> mdnsMap = scanMDNSHostnames();
             Map<String, String> arpMap = readARPTable();
             JSArray devices = new JSArray();
             AtomicInteger scannedCount = new AtomicInteger(0);
@@ -154,7 +166,8 @@ public class NetworkScannerPlugin extends Plugin {
                             boolean isMe = targetIp.equals(myIp);
 
                             NetBIOSResult netbios = queryNetBIOS(targetIp);
-                            String rawHostname = netbios.hostname != null ? netbios.hostname : getReverseDnsHostname(addr);
+                            String mdnsHost = mdnsMap.get(targetIp);
+                            String rawHostname = mdnsHost != null ? mdnsHost : (netbios.hostname != null ? netbios.hostname : getReverseDnsHostname(addr));
                             String rawMac = !netbios.mac.equals("—") ? netbios.mac : arpMap.getOrDefault(targetIp, "—");
                             String rawVendor = isGw ? "Router / Access Point" : (isMe ? "This Mobile Phone" : getVendorFromMac(rawMac));
 
@@ -170,7 +183,7 @@ public class NetworkScannerPlugin extends Plugin {
                             dev.put("openPorts", listToJSArray(openPortsList));
                             dev.put("servicesFormatted", formatServicesList(openPortsList));
 
-                            if (openPortsList.contains(80) || openPortsList.contains(8080) || openPortsList.contains(8000)) {
+                            if (openPortsList.contains(80) || openPortsList.contains(8080) || openPortsList.contains(8000) || openPortsList.contains(5000) || openPortsList.contains(8888)) {
                                 enrichHttpDevice(targetIp, openPortsList, dev);
                             }
 
@@ -208,7 +221,61 @@ public class NetworkScannerPlugin extends Plugin {
 
         } catch (Exception e) {
             call.reject("Scan error: " + e.getMessage());
+        } finally {
+            if (multicastLock != null && multicastLock.isHeld()) {
+                try { multicastLock.release(); } catch (Exception ignored) {}
+            }
         }
+    }
+
+    private Map<String, String> scanMDNSHostnames() {
+        Map<String, String> map = new ConcurrentHashMap<>();
+        try {
+            InetAddress group = InetAddress.getByName("224.0.0.251");
+            MulticastSocket socket = new MulticastSocket(5353);
+            socket.setSoTimeout(1000);
+            socket.joinGroup(group);
+
+            byte[] query = new byte[] {
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x09, '_', 's', 'e', 'r', 'v', 'i', 'c', 'e', 's',
+                0x07, '_', 'd', 'n', 's', '-', 's', 'd',
+                0x04, '_', 'u', 'd', 'p', 0x05, 'l', 'o', 'c', 'a', 'l', 0x00,
+                0x00, 0x0C, 0x00, 0x01,
+                0x05, '_', 'h', 't', 't', 'p', 0x04, '_', 't', 'c', 'p', 0x05, 'l', 'o', 'c', 'a', 'l', 0x00,
+                0x00, 0x0C, 0x00, 0x01
+            };
+
+            DatagramPacket packet = new DatagramPacket(query, query.length, group, 5353);
+            socket.send(packet);
+
+            long endTime = System.currentTimeMillis() + 1000;
+            byte[] buf = new byte[1500];
+
+            while (System.currentTimeMillis() < endTime) {
+                try {
+                    DatagramPacket resp = new DatagramPacket(buf, buf.length);
+                    socket.receive(resp);
+                    String senderIp = resp.getAddress().getHostAddress();
+                    String str = new String(resp.getData(), 0, resp.getLength());
+
+                    Pattern p = Pattern.compile("([a-zA-Z0-9\\-_]+\\.local)");
+                    Matcher m = p.matcher(str);
+                    if (m.find()) {
+                        String host = m.group(1);
+                        if (!host.contains("_services") && !host.contains("_http") && !host.contains("_tcp")) {
+                            map.put(senderIp, host);
+                        }
+                    }
+                } catch (IOException ignored) {
+                    break;
+                }
+            }
+
+            socket.leaveGroup(group);
+            socket.close();
+        } catch (Exception ignored) {}
+        return map;
     }
 
     private String calculateConfidence(boolean isGw, boolean isMe, String mac, String vendor, String hostname, List<Integer> ports) {
@@ -233,14 +300,14 @@ public class NetworkScannerPlugin extends Plugin {
             else if (p == 22) list.add("22 (SSH)");
             else if (p == 139 || p == 445) list.add(p + " (SMB/NetBIOS)");
             else if (p == 3389) list.add("3389 (RDP)");
-            else if (p == 8080 || p == 8000) list.add(p + " (Web Server)");
+            else if (p == 8080 || p == 8000 || p == 5000 || p == 8888) list.add(p + " (Web/App Server)");
             else list.add(String.valueOf(p));
         }
         return String.join(", ", list);
     }
 
     private void enrichHttpDevice(String ip, List<Integer> openPorts, JSObject dev) {
-        int targetPort = openPorts.contains(80) ? 80 : (openPorts.contains(8080) ? 8080 : 8000);
+        int targetPort = openPorts.contains(5000) ? 5000 : (openPorts.contains(80) ? 80 : (openPorts.contains(8080) ? 8080 : 8000));
         try {
             URL url = new URL("http://" + ip + ":" + targetPort + "/");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -288,6 +355,7 @@ public class NetworkScannerPlugin extends Plugin {
         if (t.contains("epson")) return "Epson Printer";
         if (t.contains("hp ")) return "HP Printer / Device";
         if (t.contains("octoprint")) return "OctoPrint 3D Printer";
+        if (t.contains("synology") || t.contains("diskstation")) return "Synology NAS";
         if (t.contains("home assistant")) return "Home Assistant Hub";
         return null;
     }
