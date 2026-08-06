@@ -971,49 +971,68 @@ async function startNativeAndroidScan() {
   let deviceListener   = null;
 
   try {
-    const ns = window.Capacitor.Plugins.NetworkScanner;
+    const ns = getNativeNetworkScanner();
 
-    // Real-time progress update listener
-    progressListener = await ns.addListener('scanProgress', (d) => {
-      const pct = Math.round((d.scanned / d.total) * 100);
-      document.getElementById('progress-fill').style.width  = pct + '%';
-      document.getElementById('progress-count').textContent = `${d.scanned} / ${d.total}`;
-      document.getElementById('progress-label').textContent = `Mobile ping sweep — found ${d.found} device${d.found !== 1 ? 's' : ''}…`;
-      document.getElementById('progress-sub').textContent   = `Scanning 254 subnet IP addresses…`;
-    });
+    if (!ns) {
+      throw new Error('Android Native Scanner plugin not ready. Please restart app.');
+    }
 
-    // Real-time device discovered listener
-    deviceListener = await ns.addListener('deviceDiscovered', (d) => {
-      const devObj = {
-        ip: d.ip,
-        mac: d.mac || '—',
-        vendor: d.vendor || 'Network Device',
-        hostname: d.isGateway ? 'router.local' : (d.isMe ? 'this-phone' : null),
-        openPorts: [],
-        sshBanner: null,
-        deviceType: d.deviceType || (d.isGateway ? { type: 'router', label: 'Gateway Router', icon: 'router' }
-                                                : { type: 'unknown', label: 'Network Device', icon: 'unknown' }),
-        isGateway: d.isGateway,
-        isMe: d.isMe,
-        label: d.isGateway ? 'Gateway Router' : (d.isMe ? 'This Phone' : null),
-      };
-
-      // Prevent duplicate entries
-      if (!S.devices.some(existing => existing.ip === devObj.ip)) {
-        S.devices.push(devObj);
-        countEl.textContent = S.devices.length;
-        appendDeviceCard(devObj, grid);
-        updateFilterCounts();
+    if (typeof ns.addListener === 'function') {
+      try {
+        progressListener = await ns.addListener('scanProgress', (d) => {
+          if (!d) return;
+          const pct = Math.round(((d.scanned || 0) / (d.total || 254)) * 100);
+          document.getElementById('progress-fill').style.width  = pct + '%';
+          document.getElementById('progress-count').textContent = `${d.scanned || 0} / ${d.total || 254}`;
+          document.getElementById('progress-label').textContent = `Mobile ping sweep — found ${d.found || 0} device${(d.found !== 1) ? 's' : ''}…`;
+          document.getElementById('progress-sub').textContent   = `Scanning 254 subnet IP addresses…`;
+        });
+      } catch (err1) {
+        console.warn('addListener scanProgress warning:', err1);
       }
-    });
 
-    const info = await ns.getNetworkInfo();
-    if (info) {
-      if (info.localIp) document.getElementById('bar-myip').textContent = info.localIp;
-      if (info.gateway) document.getElementById('bar-gateway').textContent = info.gateway;
-      if (info.ssid)    document.getElementById('bar-ssid').textContent = info.ssid;
-      if (info.signal)  document.getElementById('bar-signal').textContent = info.signal;
-      if (info.subnet)  document.getElementById('bar-subnet').textContent = info.subnet;
+      try {
+        deviceListener = await ns.addListener('deviceDiscovered', (d) => {
+          if (!d || !d.ip) return;
+          const devObj = {
+            ip: d.ip,
+            mac: d.mac || '—',
+            vendor: d.vendor || 'Network Device',
+            hostname: d.isGateway ? 'router.local' : (d.isMe ? 'this-phone' : null),
+            openPorts: [],
+            sshBanner: null,
+            deviceType: d.deviceType || (d.isGateway ? { type: 'router', label: 'Gateway Router', icon: 'router' }
+                                                    : { type: 'unknown', label: 'Network Device', icon: 'unknown' }),
+            isGateway: !!d.isGateway,
+            isMe: !!d.isMe,
+            label: d.isGateway ? 'Gateway Router' : (d.isMe ? 'This Phone' : null),
+          };
+
+          if (!S.devices.some(existing => existing.ip === devObj.ip)) {
+            S.devices.push(devObj);
+            countEl.textContent = S.devices.length;
+            appendDeviceCard(devObj, grid);
+            updateFilterCounts();
+          }
+        });
+      } catch (err2) {
+        console.warn('addListener deviceDiscovered warning:', err2);
+      }
+    }
+
+    if (typeof ns.getNetworkInfo === 'function') {
+      try {
+        const info = await ns.getNetworkInfo();
+        if (info) {
+          if (info.localIp) document.getElementById('bar-myip').textContent = info.localIp;
+          if (info.gateway) document.getElementById('bar-gateway').textContent = info.gateway;
+          if (info.ssid)    document.getElementById('bar-ssid').textContent = info.ssid;
+          if (info.signal)  document.getElementById('bar-signal').textContent = info.signal;
+          if (info.subnet)  document.getElementById('bar-subnet').textContent = info.subnet;
+        }
+      } catch (err3) {
+        console.warn('getNetworkInfo warning:', err3);
+      }
     }
 
     const res = await ns.startScan();

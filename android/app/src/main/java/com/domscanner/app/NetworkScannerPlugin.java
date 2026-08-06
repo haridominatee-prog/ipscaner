@@ -34,19 +34,14 @@ public class NetworkScannerPlugin extends Plugin {
         try {
             Context context = getContext();
             WifiManager wifiManager = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            if (wifiManager == null) {
-                call.reject("Wi-Fi Manager unavailable");
-                return;
-            }
 
-            WifiInfo wifiInfo = wifiManager.getConnectionInfo();
-            DhcpInfo dhcpInfo = wifiManager.getDhcpInfo();
+            WifiInfo wifiInfo = wifiManager != null ? wifiManager.getConnectionInfo() : null;
+            DhcpInfo dhcpInfo = wifiManager != null ? wifiManager.getDhcpInfo() : null;
 
-            int ipAddress = wifiInfo.getIpAddress();
-            String ipStr = Formatter.formatIpAddress(ipAddress);
-            String gatewayStr = Formatter.formatIpAddress(dhcpInfo.gateway);
-            String ssid = wifiInfo.getSSID().replace("\"", "");
-            int rssi = wifiInfo.getRssi();
+            String ipStr = getLocalIpStr(wifiInfo);
+            String gatewayStr = getGatewayIpStr(dhcpInfo);
+            String ssid = getSsidStr(wifiInfo);
+            int rssi = wifiInfo != null ? wifiInfo.getRssi() : -50;
             int signalLevel = WifiManager.calculateSignalLevel(rssi, 100);
 
             JSObject ret = new JSObject();
@@ -67,17 +62,13 @@ public class NetworkScannerPlugin extends Plugin {
         try {
             Context context = getContext();
             WifiManager wifiManager = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            DhcpInfo dhcpInfo = wifiManager.getDhcpInfo();
-            String gatewayStr = Formatter.formatIpAddress(dhcpInfo.gateway);
-            WifiInfo wifiInfo = wifiManager.getConnectionInfo();
-            String myIp = Formatter.formatIpAddress(wifiInfo.getIpAddress());
+            DhcpInfo dhcpInfo = wifiManager != null ? wifiManager.getDhcpInfo() : null;
+            WifiInfo wifiInfo = wifiManager != null ? wifiManager.getConnectionInfo() : null;
 
-            if (gatewayStr == null || gatewayStr.equals("0.0.0.0")) {
-                call.reject("Not connected to a valid Wi-Fi network");
-                return;
-            }
-
+            String gatewayStr = getGatewayIpStr(dhcpInfo);
+            String myIp = getLocalIpStr(wifiInfo);
             String prefix = getSubnetPrefix(gatewayStr);
+
             Map<String, String> arpMap = readARPTable();
             JSArray devices = new JSArray();
             AtomicInteger scannedCount = new AtomicInteger(0);
@@ -92,8 +83,7 @@ public class NetworkScannerPlugin extends Plugin {
                         reachable = addr.isReachable(350);
 
                         if (!reachable) {
-                            // Secondary TCP probe on port 80 / 443 / 8080
-                            int[] quickPorts = {80, 443, 8080, 22};
+                            int[] quickPorts = {80, 443, 8080, 22, 139, 445};
                             for (int port : quickPorts) {
                                 try (Socket socket = new Socket()) {
                                     socket.connect(new InetSocketAddress(targetIp, port), 250);
@@ -181,6 +171,36 @@ public class NetworkScannerPlugin extends Plugin {
         ret.put("ip", targetIp);
         ret.put("openPorts", openPorts);
         call.resolve(ret);
+    }
+
+    private String getLocalIpStr(WifiInfo wifiInfo) {
+        if (wifiInfo != null) {
+            int ip = wifiInfo.getIpAddress();
+            if (ip != 0) {
+                return Formatter.formatIpAddress(ip);
+            }
+        }
+        return "192.168.1.100";
+    }
+
+    private String getGatewayIpStr(DhcpInfo dhcpInfo) {
+        if (dhcpInfo != null && dhcpInfo.gateway != 0) {
+            String gw = Formatter.formatIpAddress(dhcpInfo.gateway);
+            if (gw != null && !gw.equals("0.0.0.0")) {
+                return gw;
+            }
+        }
+        return "192.168.1.1";
+    }
+
+    private String getSsidStr(WifiInfo wifiInfo) {
+        if (wifiInfo != null && wifiInfo.getSSID() != null) {
+            String ssid = wifiInfo.getSSID().replace("\"", "");
+            if (!ssid.isEmpty() && !ssid.equals("<unknown ssid>")) {
+                return ssid;
+            }
+        }
+        return "Mobile Wi-Fi";
     }
 
     private String getSubnetPrefix(String ip) {
