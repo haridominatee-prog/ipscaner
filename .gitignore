@@ -3,3 +3,4 @@ node_modules/
 *.db*
 android/.gradle/
 android/app/build/
+agent/*.apk
