@@ -117,7 +117,7 @@ async function loadNetworkInfo() {
 async function startScan() {
   if (S.scanning) return;
 
-  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NetworkScanner) {
+  if (getNativeNetworkScanner() || S.mode === 'native') {
     return startNativeAndroidScan();
   }
 
@@ -1126,28 +1126,49 @@ async function initCloudMode() {
 
 let mobileAgentWS = null;
 
-async function initNativeAndroidMode() {
-  const ns = window.Capacitor?.Plugins?.NetworkScanner;
-  if (!ns) return;
+function getNativeNetworkScanner() {
+  if (typeof window === 'undefined') return null;
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NetworkScanner) {
+    return window.Capacitor.Plugins.NetworkScanner;
+  }
+  if (window.Capacitor && typeof window.Capacitor.registerPlugin === 'function') {
+    try {
+      const plugin = window.Capacitor.registerPlugin('NetworkScanner');
+      if (plugin) return plugin;
+    } catch (err) {
+      console.warn('registerPlugin error:', err);
+    }
+  }
+  return null;
+}
 
+async function initNativeAndroidMode() {
+  const ns = getNativeNetworkScanner();
   S.mode = 'native';
+
+  const cloudAgentBar = document.getElementById('cloud-agent-bar');
+  if (cloudAgentBar) cloudAgentBar.style.display = 'none';
 
   let localIp = '192.168.1.100';
   let gateway = '192.168.1.1';
-  let ssid    = 'Wi-Fi / Mobile';
+  let ssid    = 'Mobile Wi-Fi';
   let signal  = '100%';
   let subnet  = '192.168.1.0/24';
 
-  try {
-    const info = await ns.getNetworkInfo();
-    if (info) {
-      if (info.localIp) localIp = info.localIp;
-      if (info.gateway) gateway = info.gateway;
-      if (info.ssid)    ssid    = info.ssid;
-      if (info.signal)  signal  = info.signal;
-      if (info.subnet)  subnet  = info.subnet;
+  if (ns) {
+    try {
+      const info = await ns.getNetworkInfo();
+      if (info) {
+        if (info.localIp) localIp = info.localIp;
+        if (info.gateway) gateway = info.gateway;
+        if (info.ssid)    ssid    = info.ssid;
+        if (info.signal)  signal  = info.signal;
+        if (info.subnet)  subnet  = info.subnet;
+      }
+    } catch (e) {
+      console.warn('Native getNetworkInfo error:', e);
     }
-  } catch {}
+  }
 
   document.getElementById('bar-myip').textContent    = localIp;
   document.getElementById('bar-gateway').textContent = gateway;
@@ -1157,11 +1178,11 @@ async function initNativeAndroidMode() {
 
   const select = document.getElementById('agent-select');
   if (select) {
-    select.innerHTML = `<option value="native_mobile">📲 Android Phone Agent (🟢 Online - ${localIp})</option>`;
+    select.innerHTML = `<option value="native_mobile">📲 Android Phone Agent (🟢 Active on this Device)</option>`;
   }
 
   updateAgentBadge(true);
-  setStatus('Android Mobile Agent Ready — 0 PC Required', 'ok');
+  setStatus('Android Mobile Agent Active — 0 PC Required', 'ok');
 
   connectMobileAgentCloud(localIp, ssid, signal);
 }
@@ -1183,7 +1204,7 @@ function connectMobileAgentCloud(localIp, ssid, signal) {
       try {
         const msg = JSON.parse(e.data);
         if (msg.command === 'start_scan') {
-          const ns = window.Capacitor?.Plugins?.NetworkScanner;
+          const ns = getNativeNetworkScanner();
           if (ns) {
             mobileAgentWS.send(JSON.stringify({ type: 'scan_event', event: 'start', data: { total: 254, subnet: document.getElementById('bar-subnet').textContent } }));
             const res = await ns.startScan();
@@ -1210,7 +1231,8 @@ async function init() {
   loadPublicIP();
   updateQuickFill();
 
-  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NetworkScanner) {
+  const isAndroidApp = !!(window.Capacitor || getNativeNetworkScanner() || location.protocol === 'https:' && location.host === 'localhost');
+  if (isAndroidApp) {
     await initNativeAndroidMode();
     return;
   }
