@@ -20,12 +20,15 @@ import com.getcapacitor.annotation.PermissionCallback;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -105,7 +108,6 @@ public class NetworkScannerPlugin extends Plugin {
             AtomicInteger scannedCount = new AtomicInteger(0);
             AtomicInteger foundCount = new AtomicInteger(0);
 
-            // Build list of target IP prefixes to check (primary Wi-Fi + common fallback subnets if disconnected)
             List<String> prefixes = new ArrayList<>();
             prefixes.add(prefix);
             if (!prefix.equals("192.168.0") && !prefix.equals("192.168.1")) {
@@ -120,36 +122,42 @@ public class NetworkScannerPlugin extends Plugin {
                     final String targetIp = subPrefix + "." + i;
                     executor.execute(() -> {
                         boolean reachable = false;
+                        List<Integer> openPortsList = new ArrayList<>();
                         try {
-                            // 1. Standard InetAddress reachability
+                            // 1. Standard InetAddress reachability check
                             InetAddress addr = InetAddress.getByName(targetIp);
-                            reachable = addr.isReachable(300);
+                            reachable = addr.isReachable(280);
 
-                            // 2. Comprehensive multi-port socket probing for non-root Android
-                            if (!reachable) {
-                                int[] probePorts = {80, 443, 8080, 22, 139, 445, 53, 3389, 8000, 5000, 8888, 1900};
-                                for (int port : probePorts) {
-                                    try (Socket socket = new Socket()) {
-                                        socket.connect(new InetSocketAddress(targetIp, port), 200);
-                                        reachable = true;
-                                        break;
-                                    } catch (IOException ignored) {}
-                                }
+                            // 2. Comprehensive multi-port probing
+                            int[] probePorts = {80, 443, 8080, 22, 139, 445, 53, 3389, 8000, 5000, 8888, 1900};
+                            for (int port : probePorts) {
+                                try (Socket socket = new Socket()) {
+                                    socket.connect(new InetSocketAddress(targetIp, port), 180);
+                                    reachable = true;
+                                    openPortsList.add(port);
+                                } catch (IOException ignored) {}
                             }
 
                             if (reachable) {
                                 foundCount.incrementAndGet();
                                 boolean isGw = targetIp.equals(gatewayStr);
                                 boolean isMe = targetIp.equals(myIp);
-                                String mac = arpMap.getOrDefault(targetIp, "—");
+
+                                // Perform NetBIOS & Hostname resolution
+                                NetBIOSResult netbios = queryNetBIOS(targetIp);
+                                String hostname = netbios.hostname != null ? netbios.hostname : getReverseDnsHostname(addr);
+                                String mac = !netbios.mac.equals("—") ? netbios.mac : arpMap.getOrDefault(targetIp, "—");
+                                String vendor = isGw ? "Router / Access Point" : (isMe ? "This Mobile Phone" : getVendorFromMac(mac));
 
                                 JSObject dev = new JSObject();
                                 dev.put("ip", targetIp);
                                 dev.put("mac", mac);
+                                dev.put("hostname", hostname);
+                                dev.put("vendor", vendor);
                                 dev.put("isGateway", isGw);
                                 dev.put("isMe", isMe);
-                                dev.put("vendor", isGw ? "Router / Access Point" : (isMe ? "This Mobile Phone" : getVendorFromMac(mac)));
-                                dev.put("deviceType", getDeviceTypeObj(isGw, isMe));
+                                dev.put("openPorts", listToJSArray(openPortsList));
+                                dev.put("deviceType", getDeviceTypeObj(isGw, isMe, vendor, openPortsList, hostname));
 
                                 synchronized (devices) {
                                     devices.put(dev);
@@ -217,6 +225,64 @@ public class NetworkScannerPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    private static class NetBIOSResult {
+        String hostname = null;
+        String mac = "—";
+    }
+
+    /** Query NetBIOS UDP 137 to resolve Hostname and MAC Address on Android 10+ */
+    private NetBIOSResult queryNetBIOS(String ip) {
+        NetBIOSResult res = new NetBIOSResult();
+        try (DatagramSocket socket = new DatagramSocket()) {
+            socket.setSoTimeout(300);
+            byte[] query = new byte[] {
+                (byte) 0x82, (byte) 0x28, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x20, 0x43, 0x4B, 0x41,
+                0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
+                0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
+                0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41,
+                0x41, 0x41, 0x41, 0x41, 0x41, 0x00, 0x00, 0x21, 0x00, 0x01
+            };
+            InetAddress target = InetAddress.getByName(ip);
+            DatagramPacket packet = new DatagramPacket(query, query.length, target, 137);
+            socket.send(packet);
+
+            byte[] buffer = new byte[1024];
+            DatagramPacket resp = new DatagramPacket(buffer, buffer.length);
+            socket.receive(resp);
+
+            if (resp.getLength() > 56) {
+                byte[] data = resp.getData();
+                int numNames = data[56] & 0xFF;
+                if (numNames > 0 && resp.getLength() >= 57 + 18) {
+                    byte[] nameBytes = new byte[15];
+                    System.arraycopy(data, 57, nameBytes, 0, 15);
+                    String name = new String(nameBytes).trim();
+                    if (!name.isEmpty()) {
+                        res.hostname = name;
+                    }
+                    int macOffset = 57 + (numNames * 18);
+                    if (resp.getLength() >= macOffset + 6) {
+                        res.mac = String.format("%02x:%02x:%02x:%02x:%02x:%02x",
+                            data[macOffset], data[macOffset + 1], data[macOffset + 2],
+                            data[macOffset + 3], data[macOffset + 4], data[macOffset + 5]);
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return res;
+    }
+
+    private String getReverseDnsHostname(InetAddress addr) {
+        try {
+            String canonical = addr.getCanonicalHostName();
+            if (canonical != null && !canonical.equalsIgnoreCase(addr.getHostAddress())) {
+                return canonical;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     private String getLocalIpStr(WifiInfo wifiInfo) {
         if (wifiInfo != null) {
             int ip = wifiInfo.getIpAddress();
@@ -255,32 +321,90 @@ public class NetworkScannerPlugin extends Plugin {
 
     private String getVendorFromMac(String mac) {
         if (mac == null || mac.equals("—") || mac.length() < 8) return "Network Device";
-        String prefix = mac.toUpperCase().substring(0, 8);
-        if (prefix.startsWith("00:50:56") || prefix.startsWith("00:0C:29")) return "VMware";
-        if (prefix.startsWith("08:00:27")) return "VirtualBox";
-        if (prefix.startsWith("B8:27:EB") || prefix.startsWith("DC:A6:32") || prefix.startsWith("E4:5F:01")) return "Raspberry Pi";
-        if (prefix.startsWith("00:1A:11") || prefix.startsWith("AC:12:03")) return "Google";
-        if (prefix.startsWith("3C:22:FB") || prefix.startsWith("F4:0F:24")) return "Apple";
-        if (prefix.startsWith("70:48:0F") || prefix.startsWith("EC:F0:0E")) return "TP-Link";
+        String p = mac.toUpperCase(Locale.US).substring(0, 8);
+
+        if (p.startsWith("B8:27:EB") || p.startsWith("DC:A6:32") || p.startsWith("E4:5F:01") || p.startsWith("D8:3A:DD") || p.startsWith("2C:CF:67")) return "Raspberry Pi";
+        if (p.startsWith("3C:22:FB") || p.startsWith("F4:0F:24") || p.startsWith("AC:D1:B8") || p.startsWith("00:1C:B3") || p.startsWith("9C:20:7B") || p.startsWith("F0:18:98") || p.startsWith("60:F8:1D") || p.startsWith("A8:51:AB") || p.startsWith("80:E6:50") || p.startsWith("DC:A9:04") || p.startsWith("A0:99:9B")) return "Apple";
+        if (p.startsWith("F8:16:54") || p.startsWith("00:12:47") || p.startsWith("08:37:3D") || p.startsWith("E8:50:8B") || p.startsWith("48:13:7E") || p.startsWith("5C:E0:F6") || p.startsWith("8C:71:F4") || p.startsWith("CC:07:AB") || p.startsWith("28:18:78")) return "Samsung";
+        if (p.startsWith("00:1A:11") || p.startsWith("F4:F5:D8") || p.startsWith("54:60:09") || p.startsWith("A4:C3:F0") || p.startsWith("D8:6C:63") || p.startsWith("94:EB:CD") || p.startsWith("3C:5A:B4")) return "Google";
+        if (p.startsWith("64:09:80") || p.startsWith("28:6C:07") || p.startsWith("18:59:36") || p.startsWith("7C:1D:D9") || p.startsWith("D4:61:9D") || p.startsWith("54:48:E6")) return "Xiaomi";
+        if (p.startsWith("00:1E:10") || p.startsWith("48:46:FB") || p.startsWith("20:F4:1B") || p.startsWith("80:7A:BF") || p.startsWith("70:8A:09") || p.startsWith("CC:A2:23")) return "Huawei";
+        if (p.startsWith("B4:E6:2D") || p.startsWith("C0:4A:00") || p.startsWith("50:C7:BF") || p.startsWith("30:DE:4B") || p.startsWith("70:48:0F") || p.startsWith("EC:F0:0E") || p.startsWith("E8:48:B8") || p.startsWith("14:CC:20")) return "TP-Link";
+        if (p.startsWith("00:50:7F") || p.startsWith("1C:AF:F7") || p.startsWith("00:17:9A") || p.startsWith("C8:D3:A3")) return "D-Link";
+        if (p.startsWith("A4:2B:8C") || p.startsWith("20:4E:7F") || p.startsWith("00:1F:33") || p.startsWith("E0:46:9A")) return "Netgear";
+        if (p.startsWith("C8:D3:A3") || p.startsWith("00:11:2F") || p.startsWith("04:D4:C4") || p.startsWith("AC:9E:17")) return "ASUS";
+        if (p.startsWith("00:0F:66") || p.startsWith("00:18:39") || p.startsWith("00:25:84") || p.startsWith("48:8D:36")) return "Cisco / Linksys";
+        if (p.startsWith("00:13:A9") || p.startsWith("00:19:C5") || p.startsWith("00:24:BE") || p.startsWith("30:F3:3A")) return "Sony";
+        if (p.startsWith("00:1C:62") || p.startsWith("00:1E:B2") || p.startsWith("10:68:3F") || p.startsWith("A8:23:FE")) return "LG";
+        if (p.startsWith("24:0A:C4") || p.startsWith("30:AE:A4") || p.startsWith("3C:71:BF") || p.startsWith("EC:FA:BC") || p.startsWith("94:B9:7E") || p.startsWith("84:F3:EB") || p.startsWith("CC:50:E3")) return "Espressif (ESP32)";
+        if (p.startsWith("8C:8D:28") || p.startsWith("A0:A8:CD") || p.startsWith("8C:EC:4B") || p.startsWith("00:A0:C9") || p.startsWith("00:1E:65") || p.startsWith("3C:52:82")) return "Intel";
+        if (p.startsWith("00:E0:4C") || p.startsWith("52:54:00")) return "Realtek";
+        if (p.startsWith("00:50:F2") || p.startsWith("28:18:78") || p.startsWith("7C:1E:52") || p.startsWith("00:17:3F") || p.startsWith("00:15:5D")) return "Microsoft";
+        if (p.startsWith("74:C2:46") || p.startsWith("44:65:0D") || p.startsWith("AC:63:BE") || p.startsWith("68:54:5A") || p.startsWith("F0:D2:F1") || p.startsWith("FC:A6:67")) return "Amazon Echo / Fire TV";
+        if (p.startsWith("70:89:76") || p.startsWith("18:69:D8") || p.startsWith("D8:0D:17") || p.startsWith("50:02:91") || p.startsWith("D4:A6:42")) return "Tuya Smart Device";
+
         return "Network Device";
     }
 
-    private JSObject getDeviceTypeObj(boolean isGw, boolean isMe) {
+    private JSObject getDeviceTypeObj(boolean isGw, boolean isMe, String vendor, List<Integer> openPorts, String hostname) {
         JSObject obj = new JSObject();
-        if (isGw) {
+        String v = vendor != null ? vendor.toLowerCase(Locale.US) : "";
+        String h = hostname != null ? hostname.toLowerCase(Locale.US) : "";
+
+        if (isGw || v.contains("tp-link") || v.contains("d-link") || v.contains("asus") || v.contains("netgear") || v.contains("cisco")) {
             obj.put("type", "router");
-            obj.put("label", "Gateway / Router");
+            obj.put("label", isGw ? "Gateway Router" : "Router / Access Point");
             obj.put("icon", "router");
         } else if (isMe) {
             obj.put("type", "phone");
             obj.put("label", "This Mobile Device");
             obj.put("icon", "phone");
+        } else if (v.contains("apple") || h.contains("iphone") || h.contains("ipad") || h.contains("macbook")) {
+            obj.put("type", "apple");
+            obj.put("label", "Apple Device");
+            obj.put("icon", "apple");
+        } else if (v.contains("samsung")) {
+            obj.put("type", "phone");
+            obj.put("label", "Samsung Device");
+            obj.put("icon", "phone");
+        } else if (v.contains("google") || h.contains("chromecast")) {
+            obj.put("type", "google");
+            obj.put("label", "Google Device");
+            obj.put("icon", "google");
+        } else if (v.contains("raspberry") || h.contains("raspberry") || h.contains("armbian") || h.contains("orangepi")) {
+            obj.put("type", "sbc");
+            obj.put("label", "Raspberry Pi / SBC");
+            obj.put("icon", "sbc");
+        } else if (v.contains("espressif") || v.contains("tuya")) {
+            obj.put("type", "iot");
+            obj.put("label", "IoT Smart Device");
+            obj.put("icon", "iot");
+        } else if (v.contains("microsoft") || openPorts.contains(3389)) {
+            obj.put("type", "windows");
+            obj.put("label", "Windows PC");
+            obj.put("icon", "windows");
+        } else if (openPorts.contains(22)) {
+            obj.put("type", "linux");
+            obj.put("label", "Linux Server / Device");
+            obj.put("icon", "linux");
+        } else if (openPorts.contains(9100) || openPorts.contains(515) || openPorts.contains(631)) {
+            obj.put("type", "printer");
+            obj.put("label", "Network Printer");
+            obj.put("icon", "printer");
         } else {
             obj.put("type", "unknown");
             obj.put("label", "Network Device");
             obj.put("icon", "unknown");
         }
         return obj;
+    }
+
+    private JSArray listToJSArray(List<Integer> list) {
+        JSArray arr = new JSArray();
+        if (list != null) {
+            for (int val : list) arr.put(val);
+        }
+        return arr;
     }
 
     private Map<String, String> readARPTable() {

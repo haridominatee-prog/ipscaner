@@ -997,10 +997,10 @@ async function startNativeAndroidScan() {
           const devObj = {
             ip: d.ip,
             mac: d.mac || '—',
+            hostname: d.hostname || (d.isGateway ? 'router.local' : (d.isMe ? 'this-phone' : null)),
             vendor: d.vendor || 'Network Device',
-            hostname: d.isGateway ? 'router.local' : (d.isMe ? 'this-phone' : null),
-            openPorts: [],
-            sshBanner: null,
+            openPorts: d.openPorts || [],
+            sshBanner: d.sshBanner || null,
             deviceType: d.deviceType || (d.isGateway ? { type: 'router', label: 'Gateway Router', icon: 'router' }
                                                     : { type: 'unknown', label: 'Network Device', icon: 'unknown' }),
             isGateway: !!d.isGateway,
@@ -1035,10 +1035,17 @@ async function startNativeAndroidScan() {
       }
     }
 
-    const res = await ns.startScan();
+    let res = null;
+    if (ns && typeof ns.startScan === 'function') {
+      try {
+        res = await ns.startScan();
+      } catch (nsErr) {
+        console.warn('ns.startScan error:', nsErr);
+      }
+    }
+
     const finalDevices = res ? (res.devices || []) : [];
 
-    // Ensure all final devices rendered
     for (const d of finalDevices) {
       if (!S.devices.some(existing => existing.ip === d.ip)) {
         const devObj = {
