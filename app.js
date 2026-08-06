@@ -1124,26 +1124,85 @@ async function initCloudMode() {
   setInterval(fetchUserAgents, 10000);
 }
 
+let mobileAgentWS = null;
+
 async function initNativeAndroidMode() {
   const ns = window.Capacitor?.Plugins?.NetworkScanner;
   if (!ns) return;
 
   S.mode = 'native';
-  const cloudAgentBar = document.getElementById('cloud-agent-bar');
-  if (cloudAgentBar) cloudAgentBar.style.display = 'none';
+
+  let localIp = '192.168.1.100';
+  let gateway = '192.168.1.1';
+  let ssid    = 'Wi-Fi / Mobile';
+  let signal  = '100%';
+  let subnet  = '192.168.1.0/24';
 
   try {
     const info = await ns.getNetworkInfo();
     if (info) {
-      if (info.localIp) document.getElementById('bar-myip').textContent = info.localIp;
-      if (info.gateway) document.getElementById('bar-gateway').textContent = info.gateway;
-      if (info.ssid)    document.getElementById('bar-ssid').textContent = info.ssid;
-      if (info.signal)  document.getElementById('bar-signal').textContent = info.signal;
-      if (info.subnet)  document.getElementById('bar-subnet').textContent = info.subnet;
+      if (info.localIp) localIp = info.localIp;
+      if (info.gateway) gateway = info.gateway;
+      if (info.ssid)    ssid    = info.ssid;
+      if (info.signal)  signal  = info.signal;
+      if (info.subnet)  subnet  = info.subnet;
     }
   } catch {}
 
-  setStatus('Mobile Native Engine Ready — 0 PC Required', 'ok');
+  document.getElementById('bar-myip').textContent    = localIp;
+  document.getElementById('bar-gateway').textContent = gateway;
+  document.getElementById('bar-subnet').textContent  = subnet;
+  document.getElementById('bar-ssid').textContent    = ssid;
+  document.getElementById('bar-signal').textContent  = signal;
+
+  const select = document.getElementById('agent-select');
+  if (select) {
+    select.innerHTML = `<option value="native_mobile">📲 Android Phone Agent (🟢 Online - ${localIp})</option>`;
+  }
+
+  updateAgentBadge(true);
+  setStatus('Android Mobile Agent Ready — 0 PC Required', 'ok');
+
+  connectMobileAgentCloud(localIp, ssid, signal);
+}
+
+function connectMobileAgentCloud(localIp, ssid, signal) {
+  const host = location.host.includes('.onrender.com') ? location.host : 'ipscaner.onrender.com';
+  const agentKey = 'mobile_android_' + Math.random().toString(36).substring(2, 9);
+  const wsUrl = `wss://${host}/ws?type=agent&key=${encodeURIComponent(agentKey)}&agentName=Android%20Phone&localIp=${encodeURIComponent(localIp)}&ssid=${encodeURIComponent(ssid)}&signal=${encodeURIComponent(signal)}&osInfo=Android%20Mobile`;
+
+  try {
+    if (mobileAgentWS) { try { mobileAgentWS.close(); } catch {} }
+    mobileAgentWS = new WebSocket(wsUrl);
+
+    mobileAgentWS.onopen = () => {
+      console.log('✅ Android Phone registered as Cloud Agent on Render');
+    };
+
+    mobileAgentWS.onmessage = async (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.command === 'start_scan') {
+          const ns = window.Capacitor?.Plugins?.NetworkScanner;
+          if (ns) {
+            mobileAgentWS.send(JSON.stringify({ type: 'scan_event', event: 'start', data: { total: 254, subnet: document.getElementById('bar-subnet').textContent } }));
+            const res = await ns.startScan();
+            const devices = res ? (res.devices || []) : [];
+            for (const d of devices) {
+              mobileAgentWS.send(JSON.stringify({ type: 'scan_event', event: 'device', data: d }));
+            }
+            mobileAgentWS.send(JSON.stringify({ type: 'scan_event', event: 'done', data: { total: devices.length, devices } }));
+          }
+        }
+      } catch {}
+    };
+
+    setInterval(() => {
+      if (mobileAgentWS && mobileAgentWS.readyState === 1) {
+        mobileAgentWS.send(JSON.stringify({ type: 'heartbeat', localIp, ssid, signal }));
+      }
+    }, 15000);
+  } catch {}
 }
 
 async function init() {
