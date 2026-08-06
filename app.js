@@ -47,6 +47,10 @@ const DEVICE_ICONS = {
   unknown: '❓',
 };
 
+function getIconEmoji(iconKey) {
+  return DEVICE_ICONS[iconKey] || '❓';
+}
+
 // ── TAB SWITCHING ────────────────────────────────────────────────────────────
 function switchTab(tabId) {
   S.activeTab = tabId;
