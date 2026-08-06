@@ -24,11 +24,14 @@ import com.getcapacitor.annotation.PermissionCallback;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +41,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @CapacitorPlugin(
     name = "NetworkScanner",
@@ -158,7 +163,13 @@ public class NetworkScannerPlugin extends Plugin {
                                 dev.put("isGateway", isGw);
                                 dev.put("isMe", isMe);
                                 dev.put("openPorts", listToJSArray(openPortsList));
-                                dev.put("deviceType", getDeviceTypeObj(isGw, isMe, vendor, openPortsList, hostname));
+
+                                // Perform HTTP page title banner extraction for web devices
+                                if (openPortsList.contains(80) || openPortsList.contains(8080) || openPortsList.contains(8000)) {
+                                    enrichHttpDevice(targetIp, openPortsList, dev);
+                                }
+
+                                dev.put("deviceType", getDeviceTypeObj(isGw, isMe, dev.getString("vendor"), openPortsList, dev.getString("hostname")));
 
                                 synchronized (devices) {
                                     devices.put(dev);
@@ -190,6 +201,59 @@ public class NetworkScannerPlugin extends Plugin {
         } catch (Exception e) {
             call.reject("Scan error: " + e.getMessage());
         }
+    }
+
+    private void enrichHttpDevice(String ip, List<Integer> openPorts, JSObject dev) {
+        int targetPort = openPorts.contains(80) ? 80 : (openPorts.contains(8080) ? 8080 : 8000);
+        try {
+            URL url = new URL("http://" + ip + ":" + targetPort + "/");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(600);
+            conn.setReadTimeout(600);
+            conn.setRequestMethod("GET");
+            int code = conn.getResponseCode();
+            if (code >= 200 && code < 400) {
+                try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    int count = 0;
+                    while ((line = in.readLine()) != null && count++ < 25) {
+                        sb.append(line);
+                    }
+                    String html = sb.toString();
+                    Pattern p = Pattern.compile("<title[^>]*>(.*?)</title>", Pattern.CASE_INSENSITIVE);
+                    Matcher m = p.matcher(html);
+                    if (m.find()) {
+                        String title = m.group(1).trim();
+                        if (!title.isEmpty() && title.length() < 60 && !title.toLowerCase().contains("404") && !title.toLowerCase().contains("error")) {
+                            dev.put("hostname", title);
+                            String parsedBrand = parseVendorFromTitle(title);
+                            if (parsedBrand != null) {
+                                dev.put("vendor", parsedBrand);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private String parseVendorFromTitle(String title) {
+        String t = title.toLowerCase(Locale.US);
+        if (t.contains("tp-link") || t.contains("tplink")) return "TP-Link Router";
+        if (t.contains("d-link") || t.contains("dlink")) return "D-Link Router";
+        if (t.contains("asus")) return "ASUS Router";
+        if (t.contains("netgear")) return "Netgear Router";
+        if (t.contains("openwrt")) return "OpenWrt Router";
+        if (t.contains("samsung")) return "Samsung Smart Device";
+        if (t.contains("hikvision")) return "Hikvision IP Camera / DVR";
+        if (t.contains("dahua")) return "Dahua IP Camera / DVR";
+        if (t.contains("canon")) return "Canon Printer";
+        if (t.contains("epson")) return "Epson Printer";
+        if (t.contains("hp ")) return "HP Printer / Device";
+        if (t.contains("octoprint")) return "OctoPrint 3D Printer";
+        if (t.contains("home assistant")) return "Home Assistant Hub";
+        return null;
     }
 
     @PluginMethod
