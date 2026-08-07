@@ -795,29 +795,26 @@ async function fetchUserAgents() {
 function renderAgentsDropdown() {
   const select = document.getElementById('agent-select');
   select.innerHTML = '';
-  if (S.agents.length === 0) {
-    select.innerHTML = '<option value="">No desktop agents connected yet (Click "Get Desktop Agent")</option>';
+
+  // Filter out offline agents so ONLY active online agents are listed
+  const onlineAgents = (S.agents || []).filter(a => a.status === 'online');
+
+  if (onlineAgents.length === 0) {
+    select.innerHTML = '<option value="">No active agents online (Click "Get Desktop Agent")</option>';
     updateAgentBadge(false);
     return;
   }
 
-  const sorted = [...S.agents].sort((a, b) => (b.status === 'online' ? 1 : 0) - (a.status === 'online' ? 1 : 0));
-
-  sorted.forEach(a => {
+  onlineAgents.forEach(a => {
     const opt = document.createElement('option');
     opt.value = a.id;
-    opt.textContent = `${a.agent_name} (${a.status === 'online' ? '🟢 Online' : '⚪ Offline'} - ${a.local_ip || 'No IP'})`;
+    opt.textContent = `${a.agent_name} (🟢 Online - ${a.local_ip || 'No IP'})`;
     select.appendChild(opt);
   });
 
-  const firstOnline = sorted.find(a => a.status === 'online');
-  if (firstOnline) {
-    S.selectedAgentId = firstOnline.id;
-  } else if (sorted.length > 0) {
-    S.selectedAgentId = sorted[0].id;
-  }
-
-  select.value = S.selectedAgentId || '';
+  // Default to first online agent
+  S.selectedAgentId = onlineAgents[0].id;
+  select.value = S.selectedAgentId;
   onAgentSelectChange();
 }
 
