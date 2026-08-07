@@ -140,6 +140,7 @@ public class NetworkScannerPlugin extends Plugin {
                     boolean reachable = false;
                     List<Integer> openPortsList = new ArrayList<>();
                     long responseTimeMs = -1;
+                    String sshBanner = null;
 
                     try {
                         InetAddress addr = InetAddress.getByName(targetIp);
@@ -148,7 +149,7 @@ public class NetworkScannerPlugin extends Plugin {
                             responseTimeMs = System.currentTimeMillis() - startTime;
                         }
 
-                        int[] probePorts = {80, 443, 8080, 22, 139, 445, 53, 3389, 8000, 5000, 8888, 1900};
+                        int[] probePorts = {21, 22, 23, 53, 80, 137, 139, 443, 445, 515, 631, 1900, 3389, 5000, 5353, 8000, 8080, 8888, 9100, 62078};
                         for (int port : probePorts) {
                             long pStart = System.currentTimeMillis();
                             try (Socket socket = new Socket()) {
@@ -158,6 +159,10 @@ public class NetworkScannerPlugin extends Plugin {
                                     responseTimeMs = System.currentTimeMillis() - pStart;
                                 }
                                 openPortsList.add(port);
+
+                                if (port == 22) {
+                                    sshBanner = extractSshBanner(socket);
+                                }
                             } catch (IOException ignored) {}
                         }
 
@@ -184,9 +189,25 @@ public class NetworkScannerPlugin extends Plugin {
                             dev.put("responseTimeMs", responseTimeMs > 0 ? responseTimeMs : 15);
                             dev.put("openPorts", listToJSArray(openPortsList));
                             dev.put("servicesFormatted", formatServicesList(openPortsList));
+                            if (sshBanner != null) dev.put("sshBanner", sshBanner);
 
                             if (openPortsList.contains(80) || openPortsList.contains(8080) || openPortsList.contains(8000) || openPortsList.contains(5000) || openPortsList.contains(8888)) {
                                 enrichHttpDevice(targetIp, openPortsList, dev);
+                            }
+
+                            if (sshBanner != null && sshBanner.toLowerCase(Locale.US).contains("ubuntu")) {
+                                if (dev.getString("vendor").startsWith("Not")) dev.put("vendor", "Ubuntu Linux Server");
+                                if (dev.getString("hostname").startsWith("Not")) dev.put("hostname", "Ubuntu Server");
+                            }
+
+                            if (openPortsList.contains(62078)) {
+                                if (dev.getString("vendor").startsWith("Not")) dev.put("vendor", "Apple");
+                                if (dev.getString("hostname").startsWith("Not")) dev.put("hostname", "Apple iOS Device");
+                            }
+
+                            if (openPortsList.contains(9100) || openPortsList.contains(631) || openPortsList.contains(515)) {
+                                if (dev.getString("vendor").startsWith("Not")) dev.put("vendor", "Network Printer");
+                                if (dev.getString("hostname").startsWith("Not")) dev.put("hostname", "Printer");
                             }
 
                             String finalVendor = dev.getString("vendor");
@@ -228,6 +249,18 @@ public class NetworkScannerPlugin extends Plugin {
                 try { multicastLock.release(); } catch (Exception ignored) {}
             }
         }
+    }
+
+    private String extractSshBanner(Socket socket) {
+        try {
+            socket.setSoTimeout(300);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            String line = reader.readLine();
+            if (line != null && line.startsWith("SSH-")) {
+                return line.trim();
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private Map<String, String> scanSSDPDevices() {
@@ -349,6 +382,8 @@ public class NetworkScannerPlugin extends Plugin {
             else if (p == 139 || p == 445) list.add(p + " (SMB/NetBIOS)");
             else if (p == 3389) list.add("3389 (RDP)");
             else if (p == 8080 || p == 8000 || p == 5000 || p == 8888) list.add(p + " (Web/App Server)");
+            else if (p == 62078) list.add("62078 (Apple iOS)");
+            else if (p == 9100 || p == 631 || p == 515) list.add(p + " (Printer Service)");
             else list.add(String.valueOf(p));
         }
         return String.join(", ", list);
@@ -596,7 +631,7 @@ public class NetworkScannerPlugin extends Plugin {
             obj.put("type", "phone");
             obj.put("label", "This Mobile Device");
             obj.put("icon", "phone");
-        } else if (v.contains("apple") || h.contains("iphone") || h.contains("ipad") || h.contains("macbook")) {
+        } else if (v.contains("apple") || h.contains("iphone") || h.contains("ipad") || h.contains("macbook") || openPorts.contains(62078)) {
             obj.put("type", "apple");
             obj.put("label", "Apple Device");
             obj.put("icon", "apple");
@@ -610,7 +645,7 @@ public class NetworkScannerPlugin extends Plugin {
             obj.put("icon", "google");
         } else if (v.contains("raspberry") || h.contains("raspberry") || h.contains("armbian") || h.contains("orangepi")) {
             obj.put("type", "sbc");
-            obj.put("label", "Raspberry Pi / SBC");
+            obj.put("label", "Orange Pi / Raspberry Pi SBC");
             obj.put("icon", "sbc");
         } else if (v.contains("espressif") || v.contains("tuya")) {
             obj.put("type", "iot");
