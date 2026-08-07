@@ -1088,11 +1088,39 @@ async function startNativeAndroidScan() {
             label: d.isGateway ? 'Gateway Router' : (d.isMe ? 'This Phone' : null),
           };
 
-          if (d.isGateway) {
-            const currentSSID = document.getElementById('bar-ssid').textContent;
-            if (!currentSSID || currentSSID.includes('Mobile Wi-Fi') || currentSSID.includes('unknown')) {
-              const gwName = d.hostname || (d.vendor && !d.vendor.startsWith('Not') ? d.vendor + ' Router' : 'Wi-Fi Network (' + d.ip + ')');
-              document.getElementById('bar-ssid').textContent = gwName;
+function formatRouterNetworkName(hostname, vendor) {
+  if (!hostname || hostname === 'router.local' || hostname === 'Not discovered') {
+    return (vendor && !vendor.startsWith('Not')) ? vendor + ' Network' : 'Wi-Fi Network';
+  }
+  let clean = hostname.replace(/\.local$/i, '').trim();
+  if (clean.length < 32) return clean + ' Network';
+  return clean;
+}
+
+function updateMobileAgentSSID(newName) {
+  if (mobileAgentWS && mobileAgentWS.readyState === 1) {
+    const myIp = document.getElementById('bar-myip').textContent;
+    const signal = document.getElementById('bar-signal').textContent;
+    try {
+      mobileAgentWS.send(JSON.stringify({
+        type: 'heartbeat',
+        localIp: myIp,
+        ssid: newName,
+        signal: signal
+      }));
+    } catch {}
+  }
+}
+
+          if (d.isGateway || d.ip === document.getElementById('bar-gateway').textContent) {
+            const currentSSID = document.getElementById('bar-ssid').textContent || '';
+            const isGeneric = !currentSSID || currentSSID.includes('Mobile Wi-Fi') || currentSSID.includes('unknown') || currentSSID.includes('Wi-Fi Network') || currentSSID.includes('192.168.');
+            if (isGeneric) {
+              const gwName = formatRouterNetworkName(d.hostname, d.vendor);
+              if (gwName && !gwName.includes('192.168.')) {
+                document.getElementById('bar-ssid').textContent = gwName;
+                updateMobileAgentSSID(gwName);
+              }
             }
           }
 
@@ -1119,8 +1147,11 @@ async function startNativeAndroidScan() {
           if (info.ssid && !info.ssid.includes('Mobile Wi-Fi') && !info.ssid.includes('unknown')) {
             document.getElementById('bar-ssid').textContent = info.ssid;
           } else if (info.gateway) {
-            const prefix = info.gateway.substring(0, info.gateway.lastIndexOf('.'));
-            document.getElementById('bar-ssid').textContent = `Wi-Fi Network (${prefix}.x)`;
+            const currentSSID = document.getElementById('bar-ssid').textContent || '';
+            if (!currentSSID || currentSSID.includes('Mobile Wi-Fi') || currentSSID.includes('unknown')) {
+              const prefix = info.gateway.substring(0, info.gateway.lastIndexOf('.'));
+              document.getElementById('bar-ssid').textContent = `Wi-Fi Network (${prefix}.x)`;
+            }
           }
         }
       } catch (err3) {
@@ -1140,6 +1171,18 @@ async function startNativeAndroidScan() {
     const finalDevices = res ? (res.devices || []) : [];
 
     for (const d of finalDevices) {
+      if (d.isGateway || d.ip === document.getElementById('bar-gateway').textContent) {
+        const currentSSID = document.getElementById('bar-ssid').textContent || '';
+        const isGeneric = !currentSSID || currentSSID.includes('Mobile Wi-Fi') || currentSSID.includes('unknown') || currentSSID.includes('Wi-Fi Network') || currentSSID.includes('192.168.');
+        if (isGeneric) {
+          const gwName = formatRouterNetworkName(d.hostname, d.vendor);
+          if (gwName && !gwName.includes('192.168.')) {
+            document.getElementById('bar-ssid').textContent = gwName;
+            updateMobileAgentSSID(gwName);
+          }
+        }
+      }
+
       if (!S.devices.some(existing => existing.ip === d.ip)) {
         const devObj = {
           ip: d.ip,
