@@ -1,5 +1,10 @@
 node_modules/
 .env
-*.db*
+*.db-wal
+*.db-shm
+.gradle/
 android/.gradle/
+android/build/
 android/app/build/
+.DS_Store
+Thumbs.db
